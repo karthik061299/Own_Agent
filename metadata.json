@@ -1,0 +1,5 @@
+{
+  "name": "Copy of Nexus Agents - Local Workflow Platform",
+  "description": "A professional-grade, local-first platform to design, configure, and orchestrate agentic workflows using the Gemini API. Features a visual graph editor, modular agent configuration, and multi-mode execution patterns.",
+  "requestFramePermissions": []
+}
