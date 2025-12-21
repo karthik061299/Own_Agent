@@ -1,7 +1,7 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Agent } from '../types';
-import { Plus, Edit2, Trash2, User, Target } from 'lucide-react';
+import { Plus, Edit2, Trash2, User, Search, Filter, Cpu } from 'lucide-react';
 
 interface AgentListProps {
   agents: Agent[];
@@ -11,6 +11,17 @@ interface AgentListProps {
 }
 
 export const AgentList: React.FC<AgentListProps> = ({ agents, onEdit, onDelete, onCreate }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [domainFilter, setDomainFilter] = useState('');
+
+  const domains = Array.from(new Set(agents.map(a => a.domain))).sort();
+
+  const filteredAgents = agents.filter(agent => {
+    const matchesSearch = agent.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesDomain = !domainFilter || agent.domain === domainFilter;
+    return matchesSearch && matchesDomain;
+  });
+
   return (
     <div className="p-8 max-w-6xl mx-auto">
       <div className="flex justify-between items-end mb-8">
@@ -27,11 +38,35 @@ export const AgentList: React.FC<AgentListProps> = ({ agents, onEdit, onDelete, 
         </button>
       </div>
 
+      <div className="flex gap-4 mb-8">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <input
+            type="text"
+            placeholder="Filter by Agent Name..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-[#121214] border border-zinc-800 rounded-lg pl-10 pr-4 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+        </div>
+        <div className="w-64 relative">
+          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <select
+            value={domainFilter}
+            onChange={(e) => setDomainFilter(e.target.value)}
+            className="w-full bg-[#121214] border border-zinc-800 rounded-lg pl-10 pr-4 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 appearance-none"
+          >
+            <option value="">All Domains</option>
+            {domains.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {agents.map((agent) => (
+        {filteredAgents.map((agent) => (
           <div
             key={agent.id}
-            className="bg-[#121214] border border-zinc-800 p-6 rounded-xl hover:border-zinc-700 transition-all group relative"
+            className="bg-[#121214] border border-zinc-800 p-6 rounded-xl hover:border-zinc-700 transition-all group relative flex flex-col h-full"
           >
             <div className="flex items-start justify-between mb-4">
               <div className="w-12 h-12 bg-zinc-800 rounded-lg flex items-center justify-center">
@@ -53,36 +88,30 @@ export const AgentList: React.FC<AgentListProps> = ({ agents, onEdit, onDelete, 
               </div>
             </div>
 
-            <h3 className="text-lg font-bold text-zinc-100 mb-1">{agent.name || 'Untitled Agent'}</h3>
-            <p className="text-sm text-zinc-400 line-clamp-2 mb-4">
-              {agent.description || 'No description provided.'}
-            </p>
-
-            <div className="space-y-3 pt-4 border-t border-zinc-800/50">
-              <div className="flex items-center gap-2 text-xs text-zinc-500">
-                <Target className="w-3.5 h-3.5" />
-                <span className="font-medium text-zinc-400 truncate">{agent.goal || 'No goal set'}</span>
+            <div className="mb-4">
+              <h3 className="text-lg font-bold text-zinc-100 mb-1">{agent.name || 'Untitled Agent'}</h3>
+              <div className="px-2 py-0.5 rounded bg-indigo-900/20 text-indigo-400 text-[10px] font-bold uppercase tracking-wider border border-indigo-900/30 inline-block mb-2">
+                {agent.domain}
               </div>
-              <div className="flex flex-wrap gap-2">
-                <span className="px-2 py-0.5 rounded bg-indigo-900/20 text-indigo-400 text-[10px] font-bold uppercase tracking-wider border border-indigo-900/30">
-                  {agent.config.model.split('-')[1].toUpperCase()}
-                </span>
-                <span className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[10px] font-bold uppercase tracking-wider">
-                  Temp: {agent.config.temperature}
-                </span>
+              <p className="text-sm text-zinc-400 line-clamp-2">
+                {agent.description || 'No description provided.'}
+              </p>
+            </div>
+
+            <div className="mt-auto pt-4 border-t border-zinc-800/50">
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900/50 border border-zinc-800 text-[10px] text-zinc-300 font-medium">
+                <Cpu className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="truncate">{agent.config.model}</span>
               </div>
             </div>
           </div>
         ))}
 
-        {agents.length === 0 && (
-          <button
-            onClick={onCreate}
-            className="border-2 border-dashed border-zinc-800 rounded-xl p-8 flex flex-col items-center justify-center text-zinc-500 hover:text-zinc-300 hover:border-zinc-700 hover:bg-zinc-800/20 transition-all gap-4 h-64"
-          >
-            <Plus className="w-8 h-8" />
-            <span className="font-medium">Create your first agent</span>
-          </button>
+        {filteredAgents.length === 0 && (
+          <div className="col-span-full border-2 border-dashed border-zinc-800 rounded-xl p-8 flex flex-col items-center justify-center text-zinc-500 gap-4 h-64">
+            <Search className="w-8 h-8 opacity-20" />
+            <span className="font-medium">No agents found matching your criteria</span>
+          </div>
         )}
       </div>
     </div>

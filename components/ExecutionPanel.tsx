@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Workflow, Agent, ExecutionLog, WorkflowType } from '../types';
 import { geminiService } from '../services/gemini';
+import { dbService } from '../services/db';
 import { Play, Terminal, Clipboard, Loader2, CheckCircle, AlertCircle, Trash2, Edit3, Save, ArrowRight, History, Zap, Settings } from 'lucide-react';
 
 interface ExecutionPanelProps {
@@ -14,24 +15,41 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
   const [isExecuting, setIsExecuting] = useState(false);
   const [logs, setLogs] = useState<ExecutionLog[]>([]);
   const [activeLogId, setActiveLogId] = useState<string | null>(null);
-  
-  // State for dynamic workflow inputs
-  // Key = Parameter Name, Value = User Input String
   const [workflowInputs, setWorkflowInputs] = useState<Record<string, string>>({});
   
   const executionRef = useRef<{ active: boolean }>({ active: false });
+  const logsRef = useRef<ExecutionLog[]>([]);
 
-  // Compute unique parameters needed for the selected workflow
+  // Synchronize ref with state for access in async closures
+  useEffect(() => {
+    logsRef.current = logs;
+  }, [logs]);
+
+  // Load existing logs from DB when workflow changes
+  useEffect(() => {
+    if (selectedWorkflowId) {
+      const loadHistory = async () => {
+        try {
+          const history = await dbService.getLogs(selectedWorkflowId);
+          setLogs(history);
+          if (history.length > 0) setActiveLogId(history[history.length - 1].id);
+        } catch (e) {
+          console.error("Failed to load trace history:", e);
+        }
+      };
+      loadHistory();
+    }
+  }, [selectedWorkflowId]);
+
   const uniqueParams = React.useMemo(() => {
     const workflow = workflows.find(w => w.metadata.id === selectedWorkflowId);
     if (!workflow) return [];
     
-    const params = new Map<string, string>(); // parameter -> description
+    const params = new Map<string, string>();
     workflow.nodes.forEach(node => {
       const agent = agents.find(a => a.id === node.agentId);
       agent?.inputs.forEach(input => {
         if (input.parameter) {
-          // If we haven't seen this parameter, or the current description is empty, update it
           if (!params.has(input.parameter) || !params.get(input.parameter)) {
             params.set(input.parameter, input.description);
           }
@@ -42,19 +60,42 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
     return Array.from(params.entries()).map(([parameter, description]) => ({ parameter, description }));
   }, [selectedWorkflowId, workflows, agents]);
 
-  const addLog = (log: Omit<ExecutionLog, 'id' | 'timestamp'>) => {
+  const addAndSaveLog = async (logData: Omit<ExecutionLog, 'id' | 'timestamp'>) => {
     const newLog: ExecutionLog = {
-      ...log,
+      ...logData,
       id: crypto.randomUUID(),
       timestamp: Date.now()
     };
+    
+    // Update local state immediately
     setLogs(prev => [...prev, newLog]);
     setActiveLogId(newLog.id);
+    
+    // Save to DB
+    try {
+      await dbService.saveLog(selectedWorkflowId, newLog);
+    } catch (e) {
+      console.error("Log persistence failure:", e);
+    }
+    
     return newLog.id;
   };
 
-  const updateLog = (id: string, updates: Partial<ExecutionLog>) => {
+  const finishAndSaveLog = async (id: string, updates: Partial<ExecutionLog>) => {
+    // 1. Update local state
     setLogs(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
+
+    // 2. Compute full log object for DB (UPSERT)
+    // We use the current state from the ref to avoid stale closure issues
+    const baseLog = logsRef.current.find(l => l.id === id);
+    if (baseLog) {
+      const updatedLog = { ...baseLog, ...updates };
+      try {
+        await dbService.saveLog(selectedWorkflowId, updatedLog);
+      } catch (e) {
+        console.error("Failed to update log in DB:", e);
+      }
+    }
   };
 
   const startExecution = async () => {
@@ -62,11 +103,10 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
     if (!workflow) return;
 
     setIsExecuting(true);
-    setLogs([]);
+    setLogs([]); 
     executionRef.current.active = true;
 
     try {
-      // Find Entry Node (node with no incoming edges)
       const incomingNodes = new Set(workflow.edges.map(e => e.target));
       let currentNode = workflow.nodes.find(n => !incomingNodes.has(n.id)) || workflow.nodes[0];
       
@@ -79,7 +119,6 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
         const agent = agents.find(a => a.id === currentNode.agentId);
         if (!agent) break;
 
-        // Process Input Substitution
         let taskWithInputs = agent.taskDescription;
         let paramContext = "";
         
@@ -95,15 +134,13 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
 
         const finalInput = `PREVIOUS AGENT OUTPUT: ${currentOutput || 'N/A'}\n\nUSER PROVIDED PARAMETERS:${paramContext || ' None'}\n\nTASK CONTEXT: ${taskWithInputs}`;
 
-        // 1. Prepare for Agent Execution
-        const logId = addLog({
+        const logId = await addAndSaveLog({
           nodeId: currentNode.id,
           agentName: agent.name,
           status: 'running',
           input: finalInput,
         });
 
-        // 2. Execution logic
         try {
           const output = await geminiService.generate(
             agent.config.model,
@@ -112,12 +149,11 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
             agent.config
           );
 
-          updateLog(logId, { status: 'completed', output });
+          await finishAndSaveLog(logId, { status: 'completed', output });
           currentOutput = output;
 
-          // 3. Routing Logic
           if (workflow.metadata.useManager) {
-            const managerLogId = addLog({
+            const managerLogId = await addAndSaveLog({
               nodeId: 'manager',
               agentName: 'Workflow Manager',
               status: 'running',
@@ -129,15 +165,15 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
               workflow.metadata.description,
               JSON.stringify(workflow.nodes),
               JSON.stringify(workflow.edges),
-              logs.map(l => `${l.agentName}: ${l.output}`).join('\n'),
+              logsRef.current.map(l => `${l.agentName}: ${l.output}`).join('\n'),
               output
             );
 
             if (route.nextNodeId) {
-              updateLog(managerLogId, { status: 'completed', output: `Routing to Node: ${route.nextNodeId}` });
+              await finishAndSaveLog(managerLogId, { status: 'completed', output: `Routing to Node: ${route.nextNodeId}` });
               currentNode = workflow.nodes.find(n => n.id === route.nextNodeId) || null;
             } else {
-              updateLog(managerLogId, { 
+              await finishAndSaveLog(managerLogId, { 
                 status: 'completed', 
                 output: route.finalSummary || 'Workflow Complete.',
                 error: route.terminationReason 
@@ -145,19 +181,18 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
               currentNode = null;
             }
           } else {
-            // Follow strict edges
             const nextEdge = workflow.edges.find(e => e.source === currentNode!.id);
             currentNode = nextEdge ? workflow.nodes.find(n => n.id === nextEdge.target) || null : null;
           }
 
         } catch (err: any) {
-          updateLog(logId, { status: 'failed', error: err.message });
+          await finishAndSaveLog(logId, { status: 'failed', error: err.message });
           break;
         }
       }
 
       if (iterations >= MAX_ITERATIONS) {
-        addLog({
+        await addAndSaveLog({
           nodeId: 'system',
           agentName: 'System',
           status: 'failed',
@@ -199,7 +234,6 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Dynamic Inputs Sidebar */}
         <div className="w-96 border-r border-zinc-800 p-6 flex flex-col bg-[#0c0c0e]/30 overflow-y-auto">
           <div className="mb-6">
             <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Selected Workflow</label>
@@ -266,17 +300,15 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
           </div>
         </div>
 
-        {/* Process Viewer */}
         <div className="flex-1 flex flex-col bg-black/20">
           <div className="p-3 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/40">
              <div className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-widest">
-               <History className="w-4 h-4" /> Trace History
+               <History className="w-4 h-4" /> Trace History (Database Persisted)
              </div>
              <button onClick={() => setLogs([])} className="text-zinc-600 hover:text-zinc-400"><Trash2 className="w-4 h-4" /></button>
           </div>
 
           <div className="flex-1 flex overflow-hidden">
-            {/* Timeline */}
             <div className="w-72 border-r border-zinc-800 overflow-y-auto p-4 space-y-3">
               {logs.map((log) => (
                 <button
@@ -301,7 +333,6 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
               )}
             </div>
 
-            {/* Content Inspector */}
             <div className="flex-1 p-8 overflow-y-auto">
                {activeLog ? (
                  <div className="max-w-3xl mx-auto space-y-8 animate-in slide-in-from-bottom-2 duration-300">

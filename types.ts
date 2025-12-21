@@ -17,19 +17,21 @@ export interface AgentInput {
 }
 
 export interface AgentConfig {
+  aiEngine: string;
+  model: string;
   temperature: number;
   topP: number;
-  maxTokens: number;
   maxRPM: number;
   maxExecutionTime: number;
   maxIterations: number;
-  model: GeminiModel;
 }
 
 export interface Agent {
   id: string;
   name: string;
   description: string;
+  role: string;
+  domain: string;
   goal: string;
   backstory: string;
   taskDescription: string;
@@ -74,4 +76,12 @@ export interface ExecutionLog {
   output?: string;
   error?: string;
   nodeId: string;
+}
+
+export interface DBModel {
+  id: string;
+  engine_id: number;
+  name: string;
+  full_name: string;
+  max_tokens: number;
 }

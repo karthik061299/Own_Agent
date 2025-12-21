@@ -1,6 +1,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { AgentConfig, GeminiModel } from "../types";
+import { dbService } from "./db";
 
 export class GeminiService {
   constructor() {
@@ -17,6 +18,10 @@ export class GeminiService {
     responseMimeType?: "application/json" | "text/plain"
   ) {
     try {
+      const allModels = await dbService.getModels();
+      const modelInfo = allModels.find(m => m.id === model);
+      const maxTokens = modelInfo?.max_tokens || 2048;
+
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: model,
@@ -25,7 +30,7 @@ export class GeminiService {
           systemInstruction,
           temperature: config.temperature,
           topP: config.topP,
-          maxOutputTokens: config.maxTokens,
+          maxOutputTokens: maxTokens,
           responseMimeType: responseMimeType,
           ...(model.startsWith('gemini-3') || model.startsWith('gemini-2.5') 
             ? { thinkingConfig: { thinkingBudget: 1024 } } 
@@ -39,9 +44,6 @@ export class GeminiService {
     }
   }
 
-  /**
-   * Manager decides the next step in the workflow graph.
-   */
   async routeNextStep(
     managerModel: string,
     workflowDesc: string,
@@ -78,24 +80,18 @@ export class GeminiService {
       managerModel, 
       systemInstruction, 
       prompt, 
-      { temperature: 0.1 },
+      { temperature: 0.1, topP: 0.9 },
       "application/json"
     );
 
     try {
-      // Robust JSON extraction: look for the first '{' and last '}'
       const jsonStart = result.indexOf('{');
       const jsonEnd = result.lastIndexOf('}');
-      
-      if (jsonStart === -1 || jsonEnd === -1) {
-        throw new Error("No JSON object found in response");
-      }
-      
+      if (jsonStart === -1 || jsonEnd === -1) throw new Error("No JSON object found in response");
       const cleanJson = result.substring(jsonStart, jsonEnd + 1);
       return JSON.parse(cleanJson);
     } catch (e) {
       console.error("Manager Routing Parsing Error. Raw Result:", result);
-      // Fallback: If it absolutely fails to parse but looks like it might be finished, terminate.
       return { 
         nextNodeId: null, 
         finalSummary: result,
