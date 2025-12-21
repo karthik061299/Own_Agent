@@ -3,23 +3,22 @@ import { GoogleGenAI } from "@google/genai";
 import { AgentConfig, GeminiModel } from "../types";
 
 export class GeminiService {
-  private ai: GoogleGenAI;
-
   constructor() {
     if (!process.env.API_KEY) {
       throw new Error("API_KEY environment variable is not defined");
     }
-    this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   }
 
   async generate(
     model: string,
     systemInstruction: string,
     prompt: string,
-    config: Partial<AgentConfig>
+    config: Partial<AgentConfig>,
+    responseMimeType?: "application/json" | "text/plain"
   ) {
     try {
-      const response = await this.ai.models.generateContent({
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
         model: model,
         contents: prompt,
         config: {
@@ -27,10 +26,9 @@ export class GeminiService {
           temperature: config.temperature,
           topP: config.topP,
           maxOutputTokens: config.maxTokens,
-          // thinkingConfig is only for Gemini 3 and 2.5
-          // We can conditionally add it if model supports it
+          responseMimeType: responseMimeType,
           ...(model.startsWith('gemini-3') || model.startsWith('gemini-2.5') 
-            ? { thinkingConfig: { thinkingBudget: 0 } } 
+            ? { thinkingConfig: { thinkingBudget: 1024 } } 
             : {})
         }
       });
@@ -41,19 +39,69 @@ export class GeminiService {
     }
   }
 
-  async orchestrate(
+  /**
+   * Manager decides the next step in the workflow graph.
+   */
+  async routeNextStep(
     managerModel: string,
-    taskDescription: string,
-    agentContexts: string[],
-    userInput: string
-  ) {
-    const systemInstruction = `You are a Workflow Manager. Your job is to coordinate multiple agents to solve a task. 
-    Current task: ${taskDescription}.
-    Available context from previous steps: ${agentContexts.join('\n')}`;
+    workflowDesc: string,
+    nodesJson: string,
+    edgesJson: string,
+    executionHistory: string,
+    lastOutput: string
+  ): Promise<{ nextNodeId: string | null; finalSummary?: string; terminationReason?: string }> {
+    const systemInstruction = `You are a Workflow Orchestrator. 
+    Workflow Objective: ${workflowDesc}
+    
+    Graph Structure:
+    Nodes: ${nodesJson}
+    Edges: ${edgesJson}
+    
+    Current Execution History:
+    ${executionHistory}
+    
+    Your Task:
+    Analyze the progress and the last agent's output. 
+    Determine which Node ID should execute next based on the graph edges OR if the process should terminate.
+    In circular loops (A->B->A), evaluate if the goal is met (e.g., code is fixed, accuracy 100%) to stop the loop.
+    
+    Respond STRICTLY in JSON format. Do not include any conversation or explanation outside the JSON object.
+    {
+      "nextNodeId": "string or null",
+      "finalSummary": "string describing final result if terminating",
+      "terminationReason": "string describing why it stopped"
+    }`;
 
-    const prompt = `Based on the user input: "${userInput}", summarize the findings or determine if more steps are needed. Provide a final comprehensive output.`;
+    const prompt = `Last Agent Output: "${lastOutput}". Determine the next step.`;
 
-    return this.generate(managerModel, systemInstruction, prompt, { temperature: 0.3, maxTokens: 4096 });
+    const result = await this.generate(
+      managerModel, 
+      systemInstruction, 
+      prompt, 
+      { temperature: 0.1 },
+      "application/json"
+    );
+
+    try {
+      // Robust JSON extraction: look for the first '{' and last '}'
+      const jsonStart = result.indexOf('{');
+      const jsonEnd = result.lastIndexOf('}');
+      
+      if (jsonStart === -1 || jsonEnd === -1) {
+        throw new Error("No JSON object found in response");
+      }
+      
+      const cleanJson = result.substring(jsonStart, jsonEnd + 1);
+      return JSON.parse(cleanJson);
+    } catch (e) {
+      console.error("Manager Routing Parsing Error. Raw Result:", result);
+      // Fallback: If it absolutely fails to parse but looks like it might be finished, terminate.
+      return { 
+        nextNodeId: null, 
+        finalSummary: result,
+        terminationReason: "Parsing error in manager response"
+      };
+    }
   }
 }
 

@@ -28,7 +28,7 @@ export interface Agent {
   goal: string;
   backstory: string;
   taskDescription: string;
-  inputPlaceholder: string; // The variable name, e.g., "user_query"
+  inputPlaceholder: string;
   expectedOutput: string;
   config: AgentConfig;
 }
@@ -46,6 +46,7 @@ export interface WorkflowNode {
   id: string;
   agentId: string;
   position: { x: number; y: number };
+  extraInput?: string; // Manual input provided by user for this specific node
 }
 
 export interface WorkflowEdge {
@@ -66,6 +67,8 @@ export interface ExecutionLog {
   agentName: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   input: string;
+  extraInput?: string;
   output?: string;
   error?: string;
+  nodeId: string;
 }
