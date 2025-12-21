@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { Agent, GeminiModel } from '../types';
-import { Save, X, Settings2, Sparkles, MessageSquare, Info, Hammer } from 'lucide-react';
+import { Agent, GeminiModel, AgentInput } from '../types';
+import { Save, X, Settings2, Sparkles, MessageSquare, Info, Hammer, Plus, Trash2 } from 'lucide-react';
 
 interface AgentEditorProps {
   agent: Agent;
@@ -12,6 +12,28 @@ interface AgentEditorProps {
 export const AgentEditor: React.FC<AgentEditorProps> = ({ agent, onSave, onCancel }) => {
   const [formData, setFormData] = useState<Agent>({ ...agent });
   const [activeTab, setActiveTab] = useState<'metadata' | 'prompt' | 'config' | 'tools'>('metadata');
+
+  const addInput = () => {
+    setFormData(prev => ({
+      ...prev,
+      inputs: [...prev.inputs, { description: '', parameter: '' }]
+    }));
+  };
+
+  const removeInput = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      inputs: prev.inputs.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateInput = (index: number, field: keyof AgentInput, value: string) => {
+    setFormData(prev => {
+      const newInputs = [...prev.inputs];
+      newInputs[index] = { ...newInputs[index], [field]: value };
+      return { ...prev, inputs: newInputs };
+    });
+  };
 
   return (
     <div className="h-full flex flex-col bg-[#09090b]">
@@ -66,26 +88,79 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({ agent, onSave, onCance
         {/* Form Content */}
         <div className="flex-1 overflow-y-auto p-8 max-w-4xl mx-auto w-full">
           {activeTab === 'metadata' && (
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-2">Agent Name</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="e.g. Code Reviewer"
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
-                />
+            <div className="space-y-8">
+              <div className="grid grid-cols-1 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-400 mb-2">Agent Name</label>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="e.g. Code Reviewer"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-400 mb-2">Description</label>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    rows={2}
+                    placeholder="What is this agent's broad purpose?"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all resize-none"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-2">Description</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  rows={3}
-                  placeholder="What is this agent's broad purpose?"
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all resize-none"
-                />
+
+              {/* Dynamic Inputs Section */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+                  <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Execution Inputs</label>
+                  <button 
+                    onClick={addInput}
+                    className="flex items-center gap-1 text-[10px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors uppercase"
+                  >
+                    <Plus className="w-3 h-3" /> Add Input
+                  </button>
+                </div>
+                
+                <div className="space-y-3">
+                  {formData.inputs.map((input, idx) => (
+                    <div key={idx} className="flex gap-3 items-end group">
+                      <div className="flex-1">
+                        <label className="block text-[10px] text-zinc-500 font-bold mb-1 uppercase tracking-tighter">Input Description</label>
+                        <input
+                          type="text"
+                          value={input.description}
+                          onChange={(e) => updateInput(idx, 'description', e.target.value)}
+                          placeholder="What does this input represent?"
+                          className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+                      <div className="w-48">
+                        <label className="block text-[10px] text-zinc-500 font-bold mb-1 uppercase tracking-tighter">Input Parameter</label>
+                        <input
+                          type="text"
+                          value={input.parameter}
+                          onChange={(e) => updateInput(idx, 'parameter', e.target.value.replace(/\s+/g, '_'))}
+                          placeholder="Parameter_Name"
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-xs mono text-indigo-400 focus:ring-1 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+                      <button 
+                        onClick={() => removeInput(idx)}
+                        className="p-2 mb-0.5 text-zinc-600 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  {formData.inputs.length === 0 && (
+                    <div className="py-8 text-center border border-dashed border-zinc-800 rounded-xl bg-zinc-900/20">
+                      <p className="text-xs text-zinc-600">No inputs defined for this agent.</p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -116,34 +191,26 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({ agent, onSave, onCance
               </div>
               <div>
                 <label className="block text-sm font-medium text-zinc-400 mb-2">Task Description</label>
+                <div className="mb-2 text-[10px] text-zinc-500">
+                  Tip: Use curly braces like <span className="text-indigo-400 mono">{`{Parameter_Name}`}</span> to inject input variables.
+                </div>
                 <textarea
                   value={formData.taskDescription}
                   onChange={(e) => setFormData({ ...formData, taskDescription: e.target.value })}
-                  rows={4}
+                  rows={6}
                   placeholder="How should it process inputs?"
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all resize-none"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all resize-none mono text-sm"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-zinc-400 mb-2">Input Placeholder</label>
-                  <input
-                    type="text"
-                    value={formData.inputPlaceholder}
-                    onChange={(e) => setFormData({ ...formData, inputPlaceholder: e.target.value })}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 focus:outline-none transition-all mono text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-zinc-400 mb-2">Expected Output Format</label>
-                  <input
-                    type="text"
-                    value={formData.expectedOutput}
-                    onChange={(e) => setFormData({ ...formData, expectedOutput: e.target.value })}
-                    placeholder="e.g. JSON, Bullet points"
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 focus:outline-none transition-all"
-                  />
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-400 mb-2">Expected Output Format</label>
+                <input
+                  type="text"
+                  value={formData.expectedOutput}
+                  onChange={(e) => setFormData({ ...formData, expectedOutput: e.target.value })}
+                  placeholder="e.g. JSON, Bullet points"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 focus:outline-none transition-all"
+                />
               </div>
             </div>
           )}

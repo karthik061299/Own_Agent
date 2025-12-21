@@ -11,6 +11,11 @@ export enum GeminiModel {
   PRO = 'gemini-3-pro-preview'
 }
 
+export interface AgentInput {
+  description: string;
+  parameter: string;
+}
+
 export interface AgentConfig {
   temperature: number;
   topP: number;
@@ -28,7 +33,7 @@ export interface Agent {
   goal: string;
   backstory: string;
   taskDescription: string;
-  inputPlaceholder: string;
+  inputs: AgentInput[];
   expectedOutput: string;
   config: AgentConfig;
 }
@@ -46,7 +51,6 @@ export interface WorkflowNode {
   id: string;
   agentId: string;
   position: { x: number; y: number };
-  extraInput?: string; // Manual input provided by user for this specific node
 }
 
 export interface WorkflowEdge {
@@ -67,7 +71,6 @@ export interface ExecutionLog {
   agentName: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   input: string;
-  extraInput?: string;
   output?: string;
   error?: string;
   nodeId: string;

@@ -76,7 +76,7 @@ const App: React.FC = () => {
                 goal: '',
                 backstory: '',
                 taskDescription: '',
-                inputPlaceholder: 'user_input',
+                inputs: [],
                 expectedOutput: '',
                 config: {
                   temperature: 0.7,

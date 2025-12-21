@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Workflow, Agent, ExecutionLog, WorkflowType } from '../types';
 import { geminiService } from '../services/gemini';
-import { Play, Terminal, Clipboard, Loader2, CheckCircle, AlertCircle, Trash2, Edit3, Save, ArrowRight, History, Zap } from 'lucide-react';
+import { Play, Terminal, Clipboard, Loader2, CheckCircle, AlertCircle, Trash2, Edit3, Save, ArrowRight, History, Zap, Settings } from 'lucide-react';
 
 interface ExecutionPanelProps {
   workflows: Workflow[];
@@ -11,17 +11,36 @@ interface ExecutionPanelProps {
 
 export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agents }) => {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>(workflows[0]?.metadata.id || '');
-  const [inputText, setInputText] = useState('');
   const [isExecuting, setIsExecuting] = useState(false);
   const [logs, setLogs] = useState<ExecutionLog[]>([]);
   const [activeLogId, setActiveLogId] = useState<string | null>(null);
   
-  // State for manual extra input mid-flow
-  const [pendingNodeId, setPendingNodeId] = useState<string | null>(null);
-  const [extraInput, setExtraInput] = useState('');
-  const [isWaitingForInput, setIsWaitingForInput] = useState(false);
+  // State for dynamic workflow inputs
+  // Key = Parameter Name, Value = User Input String
+  const [workflowInputs, setWorkflowInputs] = useState<Record<string, string>>({});
   
   const executionRef = useRef<{ active: boolean }>({ active: false });
+
+  // Compute unique parameters needed for the selected workflow
+  const uniqueParams = React.useMemo(() => {
+    const workflow = workflows.find(w => w.metadata.id === selectedWorkflowId);
+    if (!workflow) return [];
+    
+    const params = new Map<string, string>(); // parameter -> description
+    workflow.nodes.forEach(node => {
+      const agent = agents.find(a => a.id === node.agentId);
+      agent?.inputs.forEach(input => {
+        if (input.parameter) {
+          // If we haven't seen this parameter, or the current description is empty, update it
+          if (!params.has(input.parameter) || !params.get(input.parameter)) {
+            params.set(input.parameter, input.description);
+          }
+        }
+      });
+    });
+    
+    return Array.from(params.entries()).map(([parameter, description]) => ({ parameter, description }));
+  }, [selectedWorkflowId, workflows, agents]);
 
   const addLog = (log: Omit<ExecutionLog, 'id' | 'timestamp'>) => {
     const newLog: ExecutionLog = {
@@ -40,7 +59,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
 
   const startExecution = async () => {
     const workflow = workflows.find(w => w.metadata.id === selectedWorkflowId);
-    if (!workflow || !inputText) return;
+    if (!workflow) return;
 
     setIsExecuting(true);
     setLogs([]);
@@ -51,7 +70,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
       const incomingNodes = new Set(workflow.edges.map(e => e.target));
       let currentNode = workflow.nodes.find(n => !incomingNodes.has(n.id)) || workflow.nodes[0];
       
-      let currentResult = inputText;
+      let currentOutput = "";
       let iterations = 0;
       const MAX_ITERATIONS = 20;
 
@@ -60,32 +79,44 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
         const agent = agents.find(a => a.id === currentNode.agentId);
         if (!agent) break;
 
+        // Process Input Substitution
+        let taskWithInputs = agent.taskDescription;
+        let paramContext = "";
+        
+        agent.inputs.forEach(input => {
+          const val = workflowInputs[input.parameter] || "";
+          const placeholder = `{${input.parameter}}`;
+          if (taskWithInputs.includes(placeholder)) {
+            taskWithInputs = taskWithInputs.split(placeholder).join(val);
+          } else {
+            paramContext += `\n- ${input.parameter}: ${val}`;
+          }
+        });
+
+        const finalInput = `PREVIOUS AGENT OUTPUT: ${currentOutput || 'N/A'}\n\nUSER PROVIDED PARAMETERS:${paramContext || ' None'}\n\nTASK CONTEXT: ${taskWithInputs}`;
+
         // 1. Prepare for Agent Execution
         const logId = addLog({
           nodeId: currentNode.id,
           agentName: agent.name,
           status: 'running',
-          input: currentResult,
+          input: finalInput,
         });
 
         // 2. Execution logic
         try {
-          // If the node has extra input, append it
-          const finalPromptInput = `Primary Input: ${currentResult}${currentNode.extraInput ? `\nAdditional Instructions: ${currentNode.extraInput}` : ''}`;
-          
           const output = await geminiService.generate(
             agent.config.model,
-            `Backstory: ${agent.backstory}\nGoal: ${agent.goal}\nTask: ${agent.taskDescription}`,
-            finalPromptInput,
+            `Backstory: ${agent.backstory}\nGoal: ${agent.goal}\nExpected Output Format: ${agent.expectedOutput}`,
+            finalInput,
             agent.config
           );
 
           updateLog(logId, { status: 'completed', output });
-          currentResult = output;
+          currentOutput = output;
 
           // 3. Routing Logic
           if (workflow.metadata.useManager) {
-            // Let Manager decide next step
             const managerLogId = addLog({
               nodeId: 'manager',
               agentName: 'Workflow Manager',
@@ -168,64 +199,71 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Config / Input */}
-        <div className="w-80 border-r border-zinc-800 p-6 flex flex-col bg-[#0c0c0e]/30 overflow-y-auto">
+        {/* Dynamic Inputs Sidebar */}
+        <div className="w-96 border-r border-zinc-800 p-6 flex flex-col bg-[#0c0c0e]/30 overflow-y-auto">
           <div className="mb-6">
-            <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Target Workflow</label>
+            <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Selected Workflow</label>
             <select
               disabled={isExecuting}
               value={selectedWorkflowId}
               onChange={(e) => setSelectedWorkflowId(e.target.value)}
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300"
+              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 outline-none focus:ring-1 focus:ring-indigo-500"
             >
               {workflows.map(w => <option key={w.metadata.id} value={w.metadata.id}>{w.metadata.name}</option>)}
             </select>
           </div>
 
-          <div className="flex-1 flex flex-col mb-6">
-            <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Initial Input</label>
-            <textarea
-              disabled={isExecuting}
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              className="flex-1 w-full bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-xs mono text-zinc-300 resize-none focus:ring-1 focus:ring-indigo-500/50"
-              placeholder="Provide the initial prompt for the entry agent..."
-            />
+          <div className="flex-1 space-y-6">
+            <div className="flex items-center gap-2 pb-2 border-b border-zinc-800">
+               <Settings className="w-4 h-4 text-zinc-500" />
+               <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Workflow Context</h3>
+            </div>
+            
+            <div className="space-y-4">
+              {uniqueParams.map(({ parameter, description }) => (
+                <div key={parameter} className="space-y-1">
+                  <div className="flex justify-between items-end px-1">
+                    <label className="text-[10px] font-bold text-indigo-400 uppercase tracking-tighter mono">
+                      {parameter}
+                    </label>
+                    <span className="text-[9px] text-zinc-500 italic truncate ml-4">
+                      {description || "No description provided"}
+                    </span>
+                  </div>
+                  <textarea
+                    disabled={isExecuting}
+                    value={workflowInputs[parameter] || ''}
+                    onChange={(e) => setWorkflowInputs(prev => ({ ...prev, [parameter]: e.target.value }))}
+                    rows={3}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-zinc-300 resize-none focus:ring-1 focus:ring-indigo-500 outline-none transition-all placeholder:text-zinc-700"
+                    placeholder={`Provide value for ${parameter}...`}
+                  />
+                </div>
+              ))}
+              
+              {uniqueParams.length === 0 && selectedWorkflowId && (
+                <div className="py-12 text-center">
+                   <div className="text-zinc-600 mb-2 italic text-xs">This workflow doesn't require any custom input parameters.</div>
+                   <div className="text-[10px] text-zinc-700 font-bold uppercase tracking-widest">Ready for direct execution</div>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Node Config Override (Extra Input) */}
-          {selectedWorkflowId && (
-            <div className="space-y-4 mb-6">
-               <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Node Manual Overrides</label>
-               <div className="space-y-2 max-h-48 overflow-y-auto">
-                 {workflows.find(w => w.metadata.id === selectedWorkflowId)?.nodes.map(n => (
-                   <div key={n.id} className="p-2 bg-zinc-900/50 rounded border border-zinc-800">
-                     <div className="text-[10px] text-zinc-500 mb-1">{agents.find(a => a.id === n.agentId)?.name}</div>
-                     <input 
-                       placeholder="Extra context/rules..." 
-                       className="w-full bg-transparent text-[10px] outline-none text-indigo-400"
-                       defaultValue={n.extraInput}
-                       onChange={(e) => {
-                         const w = workflows.find(wf => wf.metadata.id === selectedWorkflowId);
-                         if (w) w.nodes = w.nodes.map(node => node.id === n.id ? { ...node, extraInput: e.target.value } : node);
-                       }}
-                     />
-                   </div>
-                 ))}
-               </div>
-            </div>
-          )}
-
-          <button
-            onClick={startExecution}
-            disabled={isExecuting || !inputText}
-            className={`w-full flex items-center justify-center gap-2 py-4 rounded-xl font-bold transition-all shadow-xl ${
-              isExecuting || !inputText ? 'bg-zinc-800 text-zinc-500' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20'
-            }`}
-          >
-            {isExecuting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
-            {isExecuting ? 'Processing Flow...' : 'Launch Pipeline'}
-          </button>
+          <div className="pt-6 border-t border-zinc-800 mt-6">
+            <button
+              onClick={startExecution}
+              disabled={isExecuting || (uniqueParams.length > 0 && Object.values(workflowInputs).every(v => !v))}
+              className={`w-full flex items-center justify-center gap-2 py-4 rounded-xl font-bold transition-all shadow-xl ${
+                isExecuting || (uniqueParams.length > 0 && Object.values(workflowInputs).every(v => !v))
+                  ? 'bg-zinc-800 text-zinc-500' 
+                  : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20'
+              }`}
+            >
+              {isExecuting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
+              {isExecuting ? 'Workflow Running...' : 'Execute Workflow'}
+            </button>
+          </div>
         </div>
 
         {/* Process Viewer */}
@@ -267,22 +305,14 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
             <div className="flex-1 p-8 overflow-y-auto">
                {activeLog ? (
                  <div className="max-w-3xl mx-auto space-y-8 animate-in slide-in-from-bottom-2 duration-300">
-                    <div className="grid grid-cols-2 gap-4">
-                       <div className="p-4 bg-zinc-900/50 rounded-xl border border-zinc-800">
-                         <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Input Captured</div>
-                         <div className="text-xs text-zinc-400 mono whitespace-pre-wrap line-clamp-6">{activeLog.input}</div>
-                       </div>
-                       {activeLog.extraInput && (
-                         <div className="p-4 bg-indigo-900/5 rounded-xl border border-indigo-900/20">
-                           <div className="text-[10px] font-bold text-indigo-500/50 uppercase tracking-widest mb-2">Manual Override</div>
-                           <div className="text-xs text-indigo-400 mono italic">{activeLog.extraInput}</div>
-                         </div>
-                       )}
+                    <div className="p-4 bg-zinc-900/50 rounded-xl border border-zinc-800">
+                      <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Combined Context Prompt</div>
+                      <div className="text-xs text-zinc-400 mono whitespace-pre-wrap line-clamp-[12] overflow-y-auto max-h-48">{activeLog.input}</div>
                     </div>
                     
                     <div>
                       <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Response Body</h3>
+                        <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Response Output</h3>
                         <button 
                           onClick={() => navigator.clipboard.writeText(activeLog.output || '')}
                           className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
