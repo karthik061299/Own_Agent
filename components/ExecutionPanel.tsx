@@ -8,7 +8,8 @@ import {
   Play, Terminal, Clipboard, Loader2, CheckCircle, 
   AlertCircle, Trash2, ArrowRight, History, Zap, Settings, 
   Search, Calendar, Filter, ChevronRight, Clock, Box,
-  Download, ChevronDown, ChevronUp, Layers, FileText, Square
+  Download, ChevronDown, ChevronUp, Layers, FileText, Square,
+  RotateCcw
 } from 'lucide-react';
 
 interface ExecutionPanelProps {
@@ -20,7 +21,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
   const [workflowSearch, setWorkflowSearch] = useState('');
   const [executionSearch, setExecutionSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('');
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>(workflows[0]?.metadata.id || '');
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>('');
   const [isExecuting, setIsExecuting] = useState(false);
   const [executions, setExecutions] = useState<WorkflowExecution[]>([]);
   const [activeExecutionId, setActiveExecutionId] = useState<string | null>(null);
@@ -134,12 +135,21 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
     executionRef.current.active = false;
     const currentId = executionRef.current.currentExecutionId;
     
-    // Add a final status log to mark it as stopped in history retrieval
+    // Immediately stop any 'running' logs
+    const runningLog = logsRef.current.find(l => l.status === 'running');
+    if (runningLog) {
+      await finishAndSaveLog(runningLog.id, { 
+        status: 'stopped',
+        output: runningLog.output || '' // Keep whatever we have
+      });
+    }
+
+    // Add a system log for clarity
     await addAndSaveLog(currentId, {
       nodeId: 'system',
       agentName: 'System',
       status: 'stopped',
-      input: 'User aborted the execution.',
+      input: 'User manual abort signal received.',
       output: 'Workflow execution stopped by user.'
     });
 
@@ -149,7 +159,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
 
   const startExecution = async () => {
     const workflow = workflows.find(w => w.metadata.id === selectedWorkflowId);
-    if (!workflow) return;
+    if (!workflow || workflow.nodes.length === 0) return;
 
     const executionId = crypto.randomUUID();
     setIsExecuting(true);
@@ -167,8 +177,8 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
     }, ...prev]);
 
     try {
-      const incomingNodes = new Set(workflow.edges.map(e => e.target));
-      let currentNode = workflow.nodes.find(n => !incomingNodes.has(n.id)) || workflow.nodes[0];
+      // FIX: Strictly follow the drag-and-drop sequence by starting with nodes[0]
+      let currentNode = workflow.nodes[0];
       
       let currentOutput = "";
       let iterations = 0;
@@ -198,6 +208,8 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
 
         const finalInput = `PREVIOUS AGENT OUTPUT: ${currentOutput || 'N/A'}\n\nUSER PROVIDED PARAMETERS:${paramContext || ' None'}\n\nTASK CONTEXT: ${taskWithInputs}`;
 
+        if (!executionRef.current.active) break;
+
         const logId = await addAndSaveLog(executionId, {
           nodeId: currentNode.id,
           agentName: agent.name,
@@ -214,7 +226,10 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
             agent.config
           );
 
-          if (!executionRef.current.active) break; // Check for abort before finalizing
+          if (!executionRef.current.active) {
+            await finishAndSaveLog(logId, { status: 'stopped', output: output || '' });
+            break;
+          }
 
           await finishAndSaveLog(logId, { status: 'completed', output });
           currentOutput = output;
@@ -254,6 +269,8 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
         } catch (err: any) {
           if (executionRef.current.active) {
             await finishAndSaveLog(logId, { status: 'failed', error: err.message });
+          } else {
+            await finishAndSaveLog(logId, { status: 'stopped' });
           }
           break;
         }
@@ -288,10 +305,10 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
   const downloadConsolidatedLog = () => {
     const content = logs.map(log => {
       const time = new Date(log.timestamp).toLocaleTimeString();
-      const prefix = log.nodeId === 'manager' ? 'MANAGER > ' : `${log.agentName} (V${log.version}) > `;
+      const prefix = log.nodeId === 'manager' ? 'MANAGER > ' : log.nodeId === 'system' ? 'SYSTEM > ' : `${log.agentName} (V${log.version}) > `;
       const output = log.output || log.error || 'Awaiting response...';
-      const input = `\n  REASONING/INPUT: ${log.input.replace(/\n/g, '\n  ')}\n`;
-      return `[${time}] ${prefix}${output}${log.nodeId !== 'manager' ? input : ''}`;
+      const input = (log.nodeId !== 'manager' && log.nodeId !== 'system') ? `\n  REASONING/INPUT: ${log.input.replace(/\n/g, '\n  ')}\n` : '';
+      return `[${time}] ${prefix}${output}${input}`;
     }).join('\n');
     handleDownload(content, `execution-${activeExecutionId?.slice(0, 8)}.txt`);
   };
@@ -314,9 +331,9 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
         {isExecuting && (
           <button 
             onClick={abortExecution}
-            className="flex items-center gap-2 px-4 py-2 bg-red-900/20 text-red-400 border border-red-900/30 rounded-lg text-sm hover:bg-red-900/40 transition-all font-bold"
+            className="flex items-center gap-2 px-4 py-2 bg-red-900/20 text-red-400 border border-red-900/30 rounded-lg text-sm hover:bg-red-900/40 transition-all font-bold shadow-lg shadow-red-900/10"
           >
-            <Square className="w-4 h-4" /> Abort Run
+            <Square className="w-4 h-4 fill-current" /> Abort Run
           </button>
         )}
       </header>
@@ -341,44 +358,54 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                 onChange={(e) => setSelectedWorkflowId(e.target.value)}
                 className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300 outline-none focus:ring-1 focus:ring-indigo-500"
               >
+                <option value="" disabled>Select a workflow...</option>
                 {filteredWorkflows.map(w => <option key={w.metadata.id} value={w.metadata.id}>{w.metadata.name}</option>)}
               </select>
             </div>
           </section>
 
-          <section className="space-y-4 flex-1">
-            <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-800 pb-2 flex items-center gap-2">
-              <Settings className="w-3.5 h-3.5" /> Runtime Inputs
-            </h3>
-            <div className="space-y-4">
-              {uniqueParams.map(({ parameter, description }) => (
-                <div key={parameter} className="space-y-1">
-                  <label className="text-[10px] font-bold text-indigo-400 uppercase tracking-tighter mono pl-1">{parameter}</label>
-                  <textarea
-                    disabled={isExecuting}
-                    value={workflowInputs[parameter] || ''}
-                    onChange={(e) => setWorkflowInputs(prev => ({ ...prev, [parameter]: e.target.value }))}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-xs text-zinc-300 min-h-[160px] resize-y focus:ring-1 focus:ring-indigo-500 outline-none scrollbar-thin"
-                    placeholder={description}
-                  />
+          {selectedWorkflowId ? (
+            <>
+              <section className="space-y-4 flex-1">
+                <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-800 pb-2 flex items-center gap-2">
+                  <Settings className="w-3.5 h-3.5" /> Runtime Inputs
+                </h3>
+                <div className="space-y-4">
+                  {uniqueParams.map(({ parameter, description }) => (
+                    <div key={parameter} className="space-y-1">
+                      <label className="text-[10px] font-bold text-indigo-400 uppercase tracking-tighter mono pl-1">{parameter}</label>
+                      <textarea
+                        disabled={isExecuting}
+                        value={workflowInputs[parameter] || ''}
+                        onChange={(e) => setWorkflowInputs(prev => ({ ...prev, [parameter]: e.target.value }))}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-xs text-zinc-300 min-h-[160px] resize-y focus:ring-1 focus:ring-indigo-500 outline-none scrollbar-thin"
+                        placeholder={description}
+                      />
+                    </div>
+                  ))}
+                  {uniqueParams.length === 0 && <p className="text-[10px] text-zinc-600 italic text-center py-4">No parameters required.</p>}
                 </div>
-              ))}
-              {uniqueParams.length === 0 && <p className="text-[10px] text-zinc-600 italic text-center py-4">No parameters required.</p>}
-            </div>
-          </section>
+              </section>
 
-          <button
-            onClick={startExecution}
-            disabled={isExecuting || (uniqueParams.length > 0 && Object.values(workflowInputs).every(v => !v))}
-            className={`w-full flex items-center justify-center gap-2 py-4 rounded-xl font-bold transition-all shadow-xl ${
-              isExecuting || (uniqueParams.length > 0 && Object.values(workflowInputs).every(v => !v))
-                ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
-                : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20'
-            }`}
-          >
-            {isExecuting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
-            {isExecuting ? 'Running...' : 'Execute Run'}
-          </button>
+              <button
+                onClick={startExecution}
+                disabled={isExecuting || (uniqueParams.length > 0 && Object.values(workflowInputs).every(v => !v))}
+                className={`w-full flex items-center justify-center gap-2 py-4 rounded-xl font-bold transition-all shadow-xl ${
+                  isExecuting || (uniqueParams.length > 0 && Object.values(workflowInputs).every(v => !v))
+                    ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
+                    : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20'
+                }`}
+              >
+                {isExecuting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
+                {isExecuting ? 'Running...' : 'Execute Run'}
+              </button>
+            </>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center opacity-30 text-center py-10 px-4">
+              <GitBranch className="w-10 h-10 mb-4 text-zinc-600" />
+              <p className="text-xs font-medium text-zinc-500 uppercase tracking-widest">Select a workflow to configure inputs</p>
+            </div>
+          )}
         </div>
 
         <div className="w-72 border-r border-zinc-800 flex flex-col bg-[#0c0c0e]/10">
@@ -389,7 +416,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
                 <input 
-                  type="text" placeholder="Search Runs..." value={executionSearch} onChange={(e) => setExecutionSearch(e.target.value)}
+                  type="text" placeholder="Search..." value={executionSearch} onChange={(e) => setExecutionSearch(e.target.value)}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-9 pr-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
@@ -454,7 +481,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                        </div>
                        
                        {isLogExpanded && (
-                         <div className="bg-[#0c0c0e] border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/5 font-mono text-[11px] leading-relaxed animate-in slide-in-from-top-2 duration-300">
+                         <div className="bg-[#0c0c0e] border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/5 font-mono text-[11px] font-mono leading-relaxed animate-in slide-in-from-top-2 duration-300">
                             <div className="bg-zinc-900 px-4 py-2 border-b border-zinc-800 flex items-center justify-between">
                               <span className="text-zinc-500">execution-stream --run-id {activeExecutionId.slice(0,8)}</span>
                               <div className="flex gap-1.5">
@@ -476,17 +503,21 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                                     ) : log.nodeId === 'system' ? (
                                       <div className="flex-1">
                                         <span className="text-zinc-500 font-bold">SYSTEM &gt; </span>
-                                        <span className="text-zinc-400 italic">{log.output}</span>
+                                        <span className="text-zinc-400 italic font-medium">{log.output}</span>
                                       </div>
                                     ) : (
                                       <div className="flex-1 space-y-2">
                                         <div>
                                           <span className="text-indigo-400 font-bold">{log.agentName} (V{log.version}) &gt; </span>
-                                          <span className={log.status === 'failed' ? 'text-red-400 font-bold' : log.status === 'stopped' ? 'text-amber-500 italic' : 'text-zinc-300'}>
+                                          <span className={
+                                            log.status === 'failed' ? 'text-red-400 font-bold' : 
+                                            log.status === 'stopped' ? 'text-amber-500 italic font-semibold' : 
+                                            'text-zinc-300'
+                                          }>
                                             {log.status === 'running' ? 'Thinking...' : log.output?.slice(0, 150) + (log.output && log.output.length > 150 ? '...' : '')}
                                           </span>
                                         </div>
-                                        {log.status !== 'running' && (
+                                        {(log.status !== 'running') && (
                                           <div className="pl-4 border-l border-zinc-800/50 space-y-1">
                                             <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Reasoning & Input</div>
                                             <div className="text-zinc-600 text-[10px] whitespace-pre-wrap italic line-clamp-3 hover:line-clamp-none transition-all">{log.input}</div>
@@ -505,9 +536,17 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                     </section>
 
                     <section className="space-y-4 pb-20">
-                       <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                         <Layers className="w-4 h-4" /> Agent Traces
-                       </h3>
+                       <div className="flex items-center justify-between">
+                         <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                           <Layers className="w-4 h-4" /> Agent Traces
+                         </h3>
+                         {logs.some(l => l.status === 'stopped') && (
+                           <div className="flex items-center gap-2 px-3 py-1 bg-amber-900/10 border border-amber-900/20 rounded-full text-[10px] font-bold text-amber-500 uppercase tracking-tight">
+                             <Square className="w-2.5 h-2.5 fill-current" /> Partial Run - Execution Halted
+                           </div>
+                         )}
+                       </div>
+                       
                        <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-thin">
                           {logs.filter(l => l.nodeId !== 'manager' && l.nodeId !== 'system').map(log => (
                             <button
@@ -520,7 +559,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                               <div className={`w-2 h-2 rounded-full ${
                                 log.status === 'completed' ? 'bg-emerald-400' : 
                                 log.status === 'failed' ? 'bg-red-400' : 
-                                log.status === 'stopped' ? 'bg-amber-400' : 
+                                log.status === 'stopped' ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]' : 
                                 'bg-indigo-400 animate-pulse'
                               }`} />
                               <span className="text-[11px] font-bold uppercase tracking-wider">{log.agentName} <span className="opacity-60 text-[9px]">V{log.version}</span></span>
@@ -544,7 +583,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                                   <div className="flex justify-between text-[10px]"><span className="text-zinc-600 uppercase">Status</span><span className={
                                     activeLog.status === 'completed' ? 'text-emerald-500' : 
                                     activeLog.status === 'failed' ? 'text-red-500' : 
-                                    activeLog.status === 'stopped' ? 'text-amber-500' : 
+                                    activeLog.status === 'stopped' ? 'text-amber-500 font-bold' : 
                                     'text-indigo-400'
                                   }>{activeLog.status.toUpperCase()}</span></div>
                                   <div className="flex justify-between text-[10px]"><span className="text-zinc-600 uppercase">Timestamp</span><span className="text-zinc-400">{new Date(activeLog.timestamp).toLocaleTimeString()}</span></div>
@@ -557,10 +596,24 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                                   <button onClick={() => navigator.clipboard.writeText(activeLog.output || '')} className="p-2 bg-zinc-800 rounded-lg text-zinc-400 hover:text-white" title="Copy Output"><Clipboard className="w-4 h-4" /></button>
                                </div>
                                <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-6 flex items-center gap-2"><FileText className="w-3.5 h-3.5" /> Agent Output</div>
+                               
                                {activeLog.status === 'running' ? (
                                  <div className="flex flex-col items-center py-20 gap-4 opacity-40">
                                    <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
                                    <p className="text-sm font-medium italic animate-pulse">Engaging neural weights...</p>
+                                 </div>
+                               ) : activeLog.status === 'stopped' ? (
+                                 <div className="space-y-8">
+                                    {activeLog.output && (
+                                      <div className="prose prose-sm prose-invert max-w-none opacity-80 border-b border-zinc-800 pb-8">
+                                        <Markdown>{activeLog.output}</Markdown>
+                                      </div>
+                                    )}
+                                    <div className="flex flex-col items-center py-12 text-center bg-amber-900/5 rounded-xl border border-dashed border-amber-900/20">
+                                      <AlertCircle className="w-10 h-10 text-amber-600 mb-4" />
+                                      <h4 className="text-amber-500 font-bold uppercase tracking-widest text-xs">Workflow execution has been stopped.</h4>
+                                      <p className="text-zinc-500 text-[10px] mt-1 italic">Manual intervention triggered. Further generation suspended.</p>
+                                    </div>
                                  </div>
                                ) : (
                                  <div className="prose prose-sm prose-invert max-w-none">
@@ -591,6 +644,4 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
     </div>
   );
 };
-
-const Activity = (props: any) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-activity"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>;
 const GitBranch = (props: any) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-git-branch"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>;

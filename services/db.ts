@@ -212,29 +212,35 @@ export const dbService = {
   },
 
   async getWorkflowExecutions(workflowId?: string): Promise<WorkflowExecution[]> {
-    // We join with the workflows table to get the stable workflow name from metadata
+    // We use a subquery to sort the results of DISTINCT ON by the overall timestamp descending
     const query = workflowId 
       ? sql`
-          SELECT DISTINCT ON (e.execution_id) 
-            e.execution_id, 
-            e.workflow_id, 
-            e.timestamp, 
-            e.status, 
-            (w.metadata->>'name') as workflow_name 
-          FROM "AI_Agent".execution_logs e
-          JOIN "AI_Agent".workflows w ON e.workflow_id = w.id
-          WHERE e.workflow_id = ${workflowId}::UUID 
-          ORDER BY e.execution_id, e.timestamp DESC`
+          SELECT * FROM (
+            SELECT DISTINCT ON (e.execution_id) 
+              e.execution_id, 
+              e.workflow_id, 
+              e.timestamp, 
+              e.status, 
+              (w.metadata->>'name') as workflow_name 
+            FROM "AI_Agent".execution_logs e
+            JOIN "AI_Agent".workflows w ON e.workflow_id = w.id
+            WHERE e.workflow_id = ${workflowId}::UUID 
+            ORDER BY e.execution_id, e.timestamp DESC
+          ) sub
+          ORDER BY sub.timestamp DESC`
       : sql`
-          SELECT DISTINCT ON (e.execution_id) 
-            e.execution_id, 
-            e.workflow_id, 
-            e.timestamp, 
-            e.status, 
-            (w.metadata->>'name') as workflow_name 
-          FROM "AI_Agent".execution_logs e
-          JOIN "AI_Agent".workflows w ON e.workflow_id = w.id
-          ORDER BY e.execution_id, e.timestamp DESC`;
+          SELECT * FROM (
+            SELECT DISTINCT ON (e.execution_id) 
+              e.execution_id, 
+              e.workflow_id, 
+              e.timestamp, 
+              e.status, 
+              (w.metadata->>'name') as workflow_name 
+            FROM "AI_Agent".execution_logs e
+            JOIN "AI_Agent".workflows w ON e.workflow_id = w.id
+            ORDER BY e.execution_id, e.timestamp DESC
+          ) sub
+          ORDER BY sub.timestamp DESC`;
     
     const rows = await query;
     return rows.map(row => ({

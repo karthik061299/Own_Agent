@@ -2,7 +2,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Workflow, Agent, WorkflowType, WorkflowNode, WorkflowEdge, DBModel } from '../types';
 import { dbService } from '../services/db';
-import { Save, X, Zap, ArrowRight, Search, Cpu, GripVertical, User, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { 
+  Save, X, Zap, ArrowRight, Search, Cpu, GripVertical, User, 
+  AlertCircle, CheckCircle2, RotateCcw 
+} from 'lucide-react';
 
 interface WorkflowEditorProps {
   workflow: Workflow;
@@ -70,6 +73,19 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
     }));
   };
 
+  const resetGraph = () => {
+    const confirmed = confirm("Completely reset the workflow graph? This will clear all agents and connections.");
+    if (confirmed) {
+      setFormData(prev => ({ 
+        ...prev, 
+        nodes: [], 
+        edges: [] 
+      }));
+      setConnStartNodeId(null);
+      setDraggingNodeId(null);
+    }
+  };
+
   const tryConnect = (sourceId: string, targetId: string) => {
     if (sourceId === targetId) return;
     const { type } = formData.metadata;
@@ -135,12 +151,12 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
     const cycleExists = hasCycle();
 
     if (metadata.type === WorkflowType.CIRCULAR) {
-      if (!cycleExists) return { valid: false, message: "The current flow is sequential, but Circular type is selected. Please add a feedback loop connection." };
-      if (!metadata.useManager) return { valid: false, message: "Circular workflows require a Manager LLM to prevent infinite loops." };
+      if (!cycleExists) return { valid: false, message: "Circular flow requires at least one feedback loop." };
+      if (!metadata.useManager) return { valid: false, message: "Manager LLM required for Circular flows." };
     }
 
     if (metadata.type === WorkflowType.SEQUENTIAL) {
-      if (cycleExists) return { valid: false, message: "A Sequential workflow cannot contain cycles. Please change the type to Circular." };
+      if (cycleExists) return { valid: false, message: "Cycles detected. Change type to Circular." };
     }
 
     return { valid: true, message: "" };
@@ -151,22 +167,17 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
     const t = formData.nodes.find(n => n.id === targetId);
     if (!s || !t) return null;
     
-    // Width: 256px
+    // Exact Node Geometry
     const NODE_WIDTH = 256;
-    // We assume a standard midpoint for the node cards for anchor calculations
-    // Cards usually have headers and footer, ~110px is the visual center of the main content area
-    const ANCHOR_Y_OFFSET = 110;
+    const ANCHOR_Y_OFFSET = 110; 
 
     const isBackwards = t.position.x < s.position.x;
 
-    // Source anchor: 
-    // If target is to the left (backwards), source anchor is on its left edge.
-    // If target is to the right, source anchor is on its right edge.
+    // Source Anchor (Right/Left Center Edge)
     const sx = isBackwards ? s.position.x : s.position.x + NODE_WIDTH;
     const sy = s.position.y + ANCHOR_Y_OFFSET;
 
-    // Target anchor:
-    // Terminate at target edge midpoint.
+    // Target Anchor (Left/Right Center Edge)
     const tx = isBackwards ? t.position.x + NODE_WIDTH : t.position.x;
     const ty = t.position.y + ANCHOR_Y_OFFSET;
 
@@ -218,6 +229,14 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
         )}
 
         <div className="flex gap-3">
+          <button 
+            onClick={resetGraph} 
+            className="flex items-center gap-2 px-4 py-2 text-zinc-400 hover:text-red-400 transition-colors text-sm font-medium"
+            title="Clear all agents and connections"
+          >
+            <RotateCcw className="w-4 h-4" /> Reset Graph
+          </button>
+          <div className="w-px h-8 bg-zinc-800 my-auto mx-1" />
           <button onClick={onCancel} className="px-4 py-2 text-zinc-400 hover:text-zinc-100 transition-colors text-sm font-medium">Cancel</button>
           <button 
             onClick={() => onSave(formData)} 
@@ -273,7 +292,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
                {formData.metadata.type === WorkflowType.CIRCULAR && !formData.metadata.useManager && (
                  <div className="flex gap-3 p-3 rounded-lg bg-amber-900/20 border border-amber-900/30 text-amber-400 text-[10px] leading-relaxed animate-in fade-in zoom-in duration-300">
                    <AlertCircle className="w-4 h-4 shrink-0" />
-                   <p><strong>Circular workflows require a Manager LLM</strong> to prevent infinite execution loops. Please enable and configure the Manager LLM below.</p>
+                   <p><strong>Manager required</strong> to avoid infinite loops.</p>
                  </div>
                )}
 
@@ -393,7 +412,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
               if (!data) return null;
               
               const dx = data.tx - data.sx;
-              const controlDist = Math.max(Math.abs(dx) / 1.5, 120); // Maintain a consistent, smooth curve
+              const controlDist = Math.max(Math.abs(dx) / 1.5, 120); 
               
               const cp1x = data.isBackwards ? data.sx - controlDist : data.sx + controlDist;
               const cp2x = data.isBackwards ? data.tx + controlDist : data.tx - controlDist;
@@ -409,7 +428,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
             })}
           </svg>
 
-          {formData.nodes.map((node) => {
+          {formData.nodes.map((node, idx) => {
             const agent = agents.find(a => a.id === node.agentId);
             const isConnStart = connStartNodeId === node.id;
             
@@ -421,6 +440,11 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
                 }`}
                 style={{ left: node.position.x, top: node.position.y }}
               >
+                {/* SEQUENCE INDICATOR BADGE */}
+                <div className="absolute -top-3 -left-3 w-7 h-7 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[11px] font-bold border-2 border-[#09090b] shadow-lg z-30">
+                  {idx + 1}
+                </div>
+
                 <div 
                   className="p-4 cursor-move select-none"
                   onMouseDown={(e) => {
