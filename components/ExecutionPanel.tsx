@@ -162,6 +162,8 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
 
             const route = await geminiService.routeNextStep(
               workflow.metadata.managerModel,
+              workflow.metadata.managerTemperature,
+              workflow.metadata.managerTopP,
               workflow.metadata.description,
               JSON.stringify(workflow.nodes),
               JSON.stringify(workflow.edges),

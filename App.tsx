@@ -8,7 +8,7 @@ import { WorkflowEditor } from './components/WorkflowEditor';
 import { ExecutionPanel } from './components/ExecutionPanel';
 import { Agent, Workflow } from './types';
 import { dbService } from './services/db';
-import { Settings, Users, GitBranch, Play, Loader2 } from 'lucide-react';
+import { Settings, Users, GitBranch, Play, Loader2, PanelLeft } from 'lucide-react';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'agents' | 'workflows' | 'execution'>('agents');
@@ -17,6 +17,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [editingWorkflow, setEditingWorkflow] = useState<Workflow | null>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -98,14 +99,28 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen w-full bg-[#09090b] text-zinc-100 overflow-hidden">
-      <Sidebar activeTab={activeTab} onTabChange={(tab) => {
-        setActiveTab(tab);
-        setEditingAgent(null);
-        setEditingWorkflow(null);
-      }} />
+    <div className="flex h-screen w-full bg-[#09090b] text-zinc-100 overflow-hidden relative">
+      <Sidebar 
+        activeTab={activeTab} 
+        onTabChange={(tab) => {
+          setActiveTab(tab);
+          setEditingAgent(null);
+          setEditingWorkflow(null);
+        }} 
+        isCollapsed={isSidebarCollapsed}
+        setIsCollapsed={setIsSidebarCollapsed}
+      />
       
-      <main className="flex-1 relative overflow-auto">
+      {isSidebarCollapsed && (
+        <button 
+          onClick={() => setIsSidebarCollapsed(false)}
+          className="absolute left-4 top-4 z-50 p-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white transition-all shadow-xl"
+        >
+          <PanelLeft className="w-5 h-5" />
+        </button>
+      )}
+
+      <main className="flex-1 relative overflow-auto transition-all duration-300">
         {activeTab === 'agents' && (
           editingAgent ? (
             <AgentEditor 
@@ -163,7 +178,9 @@ const App: React.FC = () => {
                   description: '',
                   type: 'SEQUENTIAL' as any,
                   useManager: false,
-                  managerModel: 'gemini-3-pro-preview' as any
+                  managerModel: 'gemini-3-pro-preview',
+                  managerTemperature: 0.7,
+                  managerTopP: 0.9
                 },
                 nodes: [],
                 edges: []

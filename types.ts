@@ -46,7 +46,9 @@ export interface WorkflowMetadata {
   description: string;
   type: WorkflowType;
   useManager: boolean;
-  managerModel: GeminiModel;
+  managerModel: string;
+  managerTemperature: number;
+  managerTopP: number;
 }
 
 export interface WorkflowNode {

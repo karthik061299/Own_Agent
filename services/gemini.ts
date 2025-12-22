@@ -46,6 +46,8 @@ export class GeminiService {
 
   async routeNextStep(
     managerModel: string,
+    managerTemp: number,
+    managerTopP: number,
     workflowDesc: string,
     nodesJson: string,
     edgesJson: string,
@@ -80,7 +82,7 @@ export class GeminiService {
       managerModel, 
       systemInstruction, 
       prompt, 
-      { temperature: 0.1, topP: 0.9 },
+      { temperature: managerTemp, topP: managerTopP },
       "application/json"
     );
 
