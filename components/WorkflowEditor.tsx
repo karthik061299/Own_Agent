@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Workflow, Agent, WorkflowType, GeminiModel, WorkflowNode, WorkflowEdge, DBModel } from '../types';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Workflow, Agent, WorkflowType, WorkflowNode, WorkflowEdge, DBModel } from '../types';
 import { dbService } from '../services/db';
-import { Save, Plus, X, LayoutGrid, Info, Zap, AlertTriangle, ArrowRight, Type, AlignLeft, Search, Filter, Cpu, GripVertical, User } from 'lucide-react';
+import { Save, X, Zap, ArrowRight, Search, Cpu, GripVertical, User, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 interface WorkflowEditorProps {
   workflow: Workflow;
@@ -27,13 +27,12 @@ const ManagerSlider: React.FC<{
     <input 
       type="range" min={min} max={max} step={step} value={value ?? 0} 
       onChange={(e) => onChange(parseFloat(e.target.value))}
-      className="w-full h-1 bg-zinc-800 rounded-lg appearance-none accent-indigo-500"
+      className="w-full h-1 bg-zinc-800 rounded-lg appearance-none accent-indigo-500 cursor-pointer"
     />
   </div>
 );
 
 export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents, onSave, onCancel }) => {
-  // Ensure we have defaults for potentially missing manager fields in old records
   const [formData, setFormData] = useState<Workflow>(() => ({
     ...workflow,
     metadata: {
@@ -78,8 +77,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
 
     if (type === WorkflowType.SEQUENTIAL) {
       if (existingOutEdges.length > 0) {
-        alert("Sequential workflows only allow one connection per agent.");
-        return;
+        return; 
       }
     }
 
@@ -105,15 +103,80 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
     }));
   };
 
+  const validation = useMemo(() => {
+    const { nodes, edges, metadata } = formData;
+    if (nodes.length === 0) return { valid: false, message: "Add at least one agent to the workflow." };
+
+    const adjacencyList = new Map<string, string[]>();
+    nodes.forEach(n => adjacencyList.set(n.id, []));
+    edges.forEach(e => adjacencyList.get(e.source)?.push(e.target));
+
+    const hasCycle = () => {
+      const visited = new Set<string>();
+      const recStack = new Set<string>();
+      const isCyclicUtil = (v: string): boolean => {
+        if (!visited.has(v)) {
+          visited.add(v);
+          recStack.add(v);
+          for (const neighbor of adjacencyList.get(v) || []) {
+            if (!visited.has(neighbor) && isCyclicUtil(neighbor)) return true;
+            else if (recStack.has(neighbor)) return true;
+          }
+        }
+        recStack.delete(v);
+        return false;
+      };
+      for (const node of nodes) {
+        if (isCyclicUtil(node.id)) return true;
+      }
+      return false;
+    };
+
+    const cycleExists = hasCycle();
+
+    if (metadata.type === WorkflowType.CIRCULAR) {
+      if (!cycleExists) return { valid: false, message: "The current flow is sequential, but Circular type is selected. Please add a feedback loop connection." };
+      if (!metadata.useManager) return { valid: false, message: "Circular workflows require a Manager LLM to prevent infinite loops." };
+    }
+
+    if (metadata.type === WorkflowType.SEQUENTIAL) {
+      if (cycleExists) return { valid: false, message: "A Sequential workflow cannot contain cycles. Please change the type to Circular." };
+    }
+
+    return { valid: true, message: "" };
+  }, [formData]);
+
   const getLineData = (sourceId: string, targetId: string) => {
     const s = formData.nodes.find(n => n.id === sourceId);
     const t = formData.nodes.find(n => n.id === targetId);
     if (!s || !t) return null;
-    const sx = s.position.x + 128; 
-    const sy = s.position.y + 60;  
-    const tx = t.position.x + 128;
-    const ty = t.position.y + 60;
-    return { sx, sy, tx, ty };
+    
+    // Width: 256px
+    const NODE_WIDTH = 256;
+    // We assume a standard midpoint for the node cards for anchor calculations
+    // Cards usually have headers and footer, ~110px is the visual center of the main content area
+    const ANCHOR_Y_OFFSET = 110;
+
+    const isBackwards = t.position.x < s.position.x;
+
+    // Source anchor: 
+    // If target is to the left (backwards), source anchor is on its left edge.
+    // If target is to the right, source anchor is on its right edge.
+    const sx = isBackwards ? s.position.x : s.position.x + NODE_WIDTH;
+    const sy = s.position.y + ANCHOR_Y_OFFSET;
+
+    // Target anchor:
+    // Terminate at target edge midpoint.
+    const tx = isBackwards ? t.position.x + NODE_WIDTH : t.position.x;
+    const ty = t.position.y + ANCHOR_Y_OFFSET;
+
+    return {
+      sx,
+      sy,
+      tx,
+      ty,
+      isBackwards
+    };
   };
 
   const filteredAgents = agents.filter(a => {
@@ -134,24 +197,45 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
           <div>
             <h2 className="text-xl font-bold text-zinc-100">{formData.metadata.name || 'New Workflow'}</h2>
             <div className="flex items-center gap-2 text-xs text-zinc-500">
-              <span className="text-indigo-400 font-bold uppercase tracking-tighter">{formData.metadata.type}</span>
+              <span className={`font-bold uppercase tracking-tighter ${validation.valid ? 'text-indigo-400' : 'text-amber-500'}`}>
+                {formData.metadata.type} {validation.valid ? '• VALID' : '• INVALID'}
+              </span>
               <span>•</span>
               <span>{formData.nodes.length} Agents</span>
             </div>
           </div>
         </div>
+
+        {!validation.valid && (
+          <div className="flex-1 px-8 animate-in fade-in slide-in-from-top-1">
+            <div className="bg-amber-900/10 border border-amber-900/30 rounded-lg px-4 py-2 flex items-center gap-3">
+              <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+              <p className="text-[11px] text-amber-200/80 font-medium leading-tight line-clamp-1">
+                {validation.message}
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-3">
-          <button onClick={onCancel} className="px-4 py-2 text-zinc-400 hover:text-zinc-100 transition-colors text-sm">Cancel</button>
-          <button onClick={() => onSave(formData)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-lg transition-all font-semibold shadow-lg shadow-indigo-600/20">
+          <button onClick={onCancel} className="px-4 py-2 text-zinc-400 hover:text-zinc-100 transition-colors text-sm font-medium">Cancel</button>
+          <button 
+            onClick={() => onSave(formData)} 
+            disabled={!validation.valid}
+            className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all font-semibold shadow-lg ${
+              validation.valid 
+                ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20 cursor-pointer' 
+                : 'bg-zinc-800 text-zinc-500 cursor-not-allowed grayscale'
+            }`}
+          >
             <Save className="w-4 h-4" /> Save Workflow
           </button>
         </div>
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Panel */}
         <div className="w-80 border-r border-zinc-800 bg-[#0c0c0e]/50 flex flex-col">
-          <div className="p-6 space-y-8 overflow-y-auto">
+          <div className="p-6 space-y-8 overflow-y-auto scrollbar-thin">
             <section className="space-y-4">
                <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-800 pb-2">Configuration</h3>
                <div className="space-y-3">
@@ -185,6 +269,13 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
                     </select>
                  </div>
                </div>
+
+               {formData.metadata.type === WorkflowType.CIRCULAR && !formData.metadata.useManager && (
+                 <div className="flex gap-3 p-3 rounded-lg bg-amber-900/20 border border-amber-900/30 text-amber-400 text-[10px] leading-relaxed animate-in fade-in zoom-in duration-300">
+                   <AlertCircle className="w-4 h-4 shrink-0" />
+                   <p><strong>Circular workflows require a Manager LLM</strong> to prevent infinite execution loops. Please enable and configure the Manager LLM below.</p>
+                 </div>
+               )}
 
                <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-lg space-y-4">
                   <div className="flex items-center justify-between">
@@ -262,10 +353,9 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
           </div>
         </div>
 
-        {/* Canvas */}
         <div 
           ref={canvasRef}
-          className="flex-1 bg-[radial-gradient(#18181b_1px,transparent_1px)] bg-[size:32px_32px] relative overflow-auto"
+          className="flex-1 bg-[radial-gradient(#18181b_1px,transparent_1px)] bg-[size:32px_32px] relative overflow-auto scrollbar-thin"
           onDragOver={(e) => {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
@@ -275,40 +365,50 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
             const agentId = e.dataTransfer.getData('agentId');
             if (agentId && canvasRef.current) {
               const rect = canvasRef.current.getBoundingClientRect();
-              const x = e.clientX - rect.left - 128;
-              const y = e.clientY - rect.top - 60;
+              const scrollLeft = canvasRef.current.scrollLeft;
+              const scrollTop = canvasRef.current.scrollTop;
+              const x = e.clientX - rect.left + scrollLeft - 128;
+              const y = e.clientY - rect.top + scrollTop - 60;
               addNodeAt(agentId, x, y);
             }
           }}
           onMouseMove={(e) => {
             if (draggingNodeId && canvasRef.current) {
               const rect = canvasRef.current.getBoundingClientRect();
-              updateNodePosition(draggingNodeId, e.clientX - rect.left - 128, e.clientY - rect.top - 60);
+              const scrollLeft = canvasRef.current.scrollLeft;
+              const scrollTop = canvasRef.current.scrollTop;
+              updateNodePosition(draggingNodeId, e.clientX - rect.left + scrollLeft - 128, e.clientY - rect.top + scrollTop - 60);
             }
           }}
           onMouseUp={() => setDraggingNodeId(null)}
         >
-          {/* Connection Layer */}
-          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ minWidth: '4000px', minHeight: '4000px' }}>
+          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ minWidth: '5000px', minHeight: '5000px' }}>
             <defs>
-              <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
-                <polygon points="0 0, 10 3.5, 0 7" fill="#4f46e5" />
+              <marker id="arrowhead" markerWidth="14" markerHeight="10" refX="13" refY="5" orient="auto">
+                <path d="M0,0 L14,5 L0,10 Z" fill="#4f46e5" />
               </marker>
             </defs>
             {formData.edges.map(edge => {
               const data = getLineData(edge.source, edge.target);
               if (!data) return null;
+              
+              const dx = data.tx - data.sx;
+              const controlDist = Math.max(Math.abs(dx) / 1.5, 120); // Maintain a consistent, smooth curve
+              
+              const cp1x = data.isBackwards ? data.sx - controlDist : data.sx + controlDist;
+              const cp2x = data.isBackwards ? data.tx + controlDist : data.tx - controlDist;
+
               return (
                 <path
                   key={edge.id}
-                  d={`M ${data.sx} ${data.sy} C ${data.sx + 120} ${data.sy}, ${data.tx - 120} ${data.ty}, ${data.tx} ${data.ty}`}
-                  stroke="#4f46e5" strokeWidth="2.5" fill="none" markerEnd="url(#arrowhead)" className="opacity-70"
+                  d={`M ${data.sx} ${data.sy} C ${cp1x} ${data.sy}, ${cp2x} ${data.ty}, ${data.tx} ${data.ty}`}
+                  stroke="#4f46e5" strokeWidth="2.5" fill="none" markerEnd="url(#arrowhead)" 
+                  className="opacity-70 transition-all duration-300"
                 />
               );
             })}
           </svg>
 
-          {/* Nodes */}
           {formData.nodes.map((node) => {
             const agent = agents.find(a => a.id === node.agentId);
             const isConnStart = connStartNodeId === node.id;

@@ -71,13 +71,23 @@ export interface Workflow {
 
 export interface ExecutionLog {
   id: string;
+  execution_id: string;
   timestamp: number;
   agentName: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'stopped';
   input: string;
   output?: string;
   error?: string;
   nodeId: string;
+  version?: number;
+}
+
+export interface WorkflowExecution {
+  id: string;
+  workflow_id: string;
+  workflow_name: string;
+  status: 'running' | 'completed' | 'failed' | 'stopped';
+  timestamp: number;
 }
 
 export interface DBModel {

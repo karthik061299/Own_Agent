@@ -8,7 +8,7 @@ import { WorkflowEditor } from './components/WorkflowEditor';
 import { ExecutionPanel } from './components/ExecutionPanel';
 import { Agent, Workflow } from './types';
 import { dbService } from './services/db';
-import { Settings, Users, GitBranch, Play, Loader2, PanelLeft } from 'lucide-react';
+import { Settings, Users, GitBranch, Play, Loader2, PanelRight } from 'lucide-react';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'agents' | 'workflows' | 'execution'>('agents');
@@ -17,7 +17,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [editingWorkflow, setEditingWorkflow] = useState<Workflow | null>(null);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   useEffect(() => {
     const init = async () => {
@@ -100,6 +100,7 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen w-full bg-[#09090b] text-zinc-100 overflow-hidden relative">
+      {/* Sidebar strip for expanded/collapsed state */}
       <Sidebar 
         activeTab={activeTab} 
         onTabChange={(tab) => {
@@ -112,12 +113,26 @@ const App: React.FC = () => {
       />
       
       {isSidebarCollapsed && (
-        <button 
-          onClick={() => setIsSidebarCollapsed(false)}
-          className="absolute left-4 top-4 z-50 p-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white transition-all shadow-xl"
-        >
-          <PanelLeft className="w-5 h-5" />
-        </button>
+        <div className="w-14 border-r border-zinc-800 bg-[#0c0c0e] flex flex-col items-center py-6 gap-6 z-50 transition-all">
+          <button 
+            onClick={() => setIsSidebarCollapsed(false)}
+            className="p-2 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 rounded-lg border border-indigo-600/20 transition-all shadow-lg"
+            title="Expand Navigation"
+          >
+            <PanelRight className="w-5 h-5" />
+          </button>
+          <div className="flex flex-col gap-4">
+            <button onClick={() => {setActiveTab('agents'); setEditingAgent(null);}} className={`p-2 rounded-lg transition-all ${activeTab === 'agents' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-600 hover:text-zinc-400'}`}>
+              <Users className="w-5 h-5" />
+            </button>
+            <button onClick={() => {setActiveTab('workflows'); setEditingWorkflow(null);}} className={`p-2 rounded-lg transition-all ${activeTab === 'workflows' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-600 hover:text-zinc-400'}`}>
+              <GitBranch className="w-5 h-5" />
+            </button>
+            <button onClick={() => setActiveTab('execution')} className={`p-2 rounded-lg transition-all ${activeTab === 'execution' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-600 hover:text-zinc-400'}`}>
+              <Play className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
       )}
 
       <main className="flex-1 relative overflow-auto transition-all duration-300">

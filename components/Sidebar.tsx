@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Users, GitBranch, Play, Settings, Database, Cpu, PanelLeftClose } from 'lucide-react';
+import React from 'react';
+import { Users, GitBranch, Play, Settings, Cpu, PanelLeftClose } from 'lucide-react';
 
 interface SidebarProps {
   activeTab: 'agents' | 'workflows' | 'execution';
@@ -9,30 +9,7 @@ interface SidebarProps {
   setIsCollapsed: (collapsed: boolean) => void;
 }
 
-const INACTIVITY_TIMEOUT = 10000; // 10 seconds of inactivity to auto-hide
-
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isCollapsed, setIsCollapsed }) => {
-  const [isHovered, setIsHovered] = useState(false);
-  const timerRef = useRef<number | null>(null);
-
-  const resetTimer = () => {
-    if (timerRef.current) window.clearTimeout(timerRef.current);
-    if (!isCollapsed && !isHovered) {
-      timerRef.current = window.setTimeout(() => {
-        setIsCollapsed(true);
-      }, INACTIVITY_TIMEOUT);
-    }
-  };
-
-  useEffect(() => {
-    if (!isCollapsed && !isHovered) {
-      resetTimer();
-    } else if (timerRef.current) {
-      window.clearTimeout(timerRef.current);
-    }
-    return () => { if (timerRef.current) window.clearTimeout(timerRef.current); };
-  }, [isCollapsed, isHovered]);
-
   const menuItems = [
     { id: 'agents', label: 'Agents', icon: Users },
     { id: 'workflows', label: 'Workflows', icon: GitBranch },
@@ -44,9 +21,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isColl
   return (
     <aside 
       className={`w-64 border-r border-zinc-800 bg-[#0c0c0e] flex flex-col transition-all duration-300 transform translate-x-0 overflow-hidden shadow-2xl z-40`}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      onMouseMove={resetTimer}
     >
       <div className="p-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
