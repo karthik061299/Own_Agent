@@ -34,9 +34,10 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
   const logsRef = useRef<ExecutionLog[]>([]);
   const timerRef = useRef<number | null>(null);
 
+  // Force state and ref synchronization for immediate UI updates
   const updateLogsAndRef = (newLogs: ExecutionLog[]) => {
     logsRef.current = newLogs;
-    setLogs([...newLogs]);
+    setLogs([...newLogs]); // Force re-render with fresh array reference
   };
 
   useEffect(() => {
@@ -59,8 +60,9 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
           const runLogs = await dbService.getLogsByExecution(activeExecutionId);
           updateLogsAndRef(runLogs);
           if (runLogs.length > 0) {
-            const activeLog = runLogs.find(l => l.status === 'running' || l.status === 'failed');
-            setActiveLogId(activeLog?.id || runLogs[runLogs.length - 1].id);
+            // Smart focus: focus the running agent, a failed agent, or the last log
+            const focalLog = runLogs.find(l => l.status === 'running' || l.status === 'failed') || runLogs[runLogs.length - 1];
+            setActiveLogId(focalLog.id);
           }
         } catch (e) {
           console.error("Failed to load trace history:", e);
@@ -101,7 +103,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
     return Array.from(params.entries()).map(([parameter, description]) => ({ parameter, description }));
   }, [selectedWorkflowId, workflows, agents]);
 
-  const addAndSaveLog = async (executionId: string, logData: Omit<ExecutionLog, 'id' | 'timestamp' | 'execution_id'>) => {
+  const addAndSaveLog = async (executionId: string, logData: Omit<ExecutionLog, 'id' | 'timestamp' | 'execution_id'>, duration?: number) => {
     const newLog: ExecutionLog = {
       ...logData,
       id: crypto.randomUUID(),
@@ -114,7 +116,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
     setActiveLogId(newLog.id); 
     
     try {
-      await dbService.saveLog(selectedWorkflowId, newLog);
+      await dbService.saveLog(selectedWorkflowId, newLog, duration);
     } catch (e) {
       console.error("Log persistence failure:", e);
     }
@@ -143,11 +145,11 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
     if (!executionRef.current.currentExecutionId) return;
     
     executionRef.current.active = false;
+    if (timerRef.current) clearInterval(timerRef.current);
+    
     const currentId = executionRef.current.currentExecutionId;
     const duration = Math.floor((Date.now() - executionRef.current.startTime) / 1000);
     
-    if (timerRef.current) clearInterval(timerRef.current);
-
     const runningLog = logsRef.current.find(l => l.status === 'running');
     if (runningLog) {
       await finishAndSaveLog(runningLog.id, { 
@@ -162,7 +164,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
       status: 'stopped',
       input: 'Abort command issued.',
       output: 'Workflow stopped by user.'
-    });
+    }, duration);
 
     setExecutions(prev => prev.map(ex => ex.id === currentId ? { ...ex, status: 'stopped', duration } : ex));
     setIsExecuting(false);
@@ -193,7 +195,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
     const startTime = Date.now();
     
     setIsExecuting(true);
-    setIsLogExpanded(true);
+    setIsLogExpanded(true); // Default to expanded during run
     setActiveExecutionId(executionId);
     updateLogsAndRef([]); 
     setElapsedSeconds(0);
@@ -202,6 +204,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
     executionRef.current.currentExecutionId = executionId;
     executionRef.current.startTime = startTime;
 
+    // Start live timer
     timerRef.current = window.setInterval(() => {
       setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000));
     }, 1000);
@@ -346,7 +349,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
           }
         } catch (err: any) {
           if (executionRef.current.active) {
-            await finishAndSaveLog(logId, { status: 'failed', error: err.message });
+            await finishAndSaveLog(logId, { status: 'failed', error: err.message || 'Critical agent error.' });
           }
           break;
         }
@@ -356,7 +359,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
         const duration = Math.floor((Date.now() - startTime) / 1000);
         if (timerRef.current) clearInterval(timerRef.current);
         setExecutions(prev => prev.map(ex => ex.id === executionId ? { ...ex, status: 'completed', duration } : ex));
-        await addAndSaveLog(executionId, { nodeId: 'system', agentName: 'System', status: 'completed', input: 'Teardown', output: `Pipeline finished. Total time: ${formatDuration(duration)}.` });
+        await addAndSaveLog(executionId, { nodeId: 'system', agentName: 'System', status: 'completed', input: 'Teardown', output: `Pipeline finished. Total time: ${formatDuration(duration)}.` }, duration);
       }
     } catch (e: any) {
       console.error("Critical Execution Failure:", e);
@@ -368,11 +371,12 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
     } finally {
       setIsExecuting(false);
       executionRef.current.active = false;
+      loadExecutionHistory(); // Refresh duration in sidebar list
     }
   };
 
   const formatDuration = (seconds?: number) => {
-    if (seconds === undefined) return '0s';
+    if (seconds === undefined || seconds === null) return '0s';
     if (seconds < 60) return `${seconds}s`;
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -524,7 +528,9 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                   </div>
                   <div className="flex items-center justify-between text-[9px] text-zinc-600">
                     <div className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" /> {new Date(ex.timestamp).toLocaleTimeString()}</div>
-                    {ex.duration !== undefined && <div className="text-indigo-400 font-bold">{formatDuration(ex.duration)}</div>}
+                    {ex.duration !== undefined && ex.duration !== null && (
+                      <div className="text-indigo-400 font-bold">{formatDuration(ex.duration)}</div>
+                    )}
                   </div>
                 </button>
               ))}
@@ -532,11 +538,12 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
            </div>
         </div>
 
-        {/* Central Display */}
+        {/* Central Log/Trace Display */}
         <div className="flex-1 flex flex-col bg-black/40 overflow-hidden relative">
            {activeExecutionId ? (
              <div className="flex-1 flex flex-col overflow-y-auto scrollbar-thin p-8">
                 <div className="max-w-4xl mx-auto w-full space-y-8 animate-in fade-in duration-300">
+                    {/* CONSOLIDATED LOG SECTION */}
                     <section className="space-y-4">
                        <div className="flex items-center justify-between group">
                          <div className="flex items-center gap-3">
@@ -564,13 +571,14 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                        {isLogExpanded && (
                          <div className="bg-[#0c0c0e] border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/5 font-mono text-[11px] leading-relaxed animate-in slide-in-from-top-3 duration-300">
                             <div className="bg-zinc-900/50 px-5 py-3 border-b border-zinc-800 flex items-center justify-between">
-                              <span className="text-zinc-600 uppercase tracking-widest text-[9px] font-bold">System Trace • ID: {activeExecutionId.slice(0,8)}</span>
+                              <span className="text-zinc-600 uppercase tracking-widest text-[9px] font-bold">Live System Trace • ID: {activeExecutionId.slice(0,8)}</span>
+                              {isExecuting && <span className="flex items-center gap-2 text-indigo-500 text-[9px] font-bold uppercase animate-pulse"><div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-ping" /> Synchronizing</span>}
                             </div>
                             <div className="p-6 space-y-4 min-h-[150px] max-h-[500px] overflow-y-auto scrollbar-thin">
                               {logs.map((log) => (
                                 <div key={log.id} className="animate-in fade-in slide-in-from-left-2 duration-300 border-b border-zinc-800/40 pb-4 last:border-0 last:pb-0">
                                   <div className="flex items-start gap-4">
-                                    <span className="text-zinc-700 shrink-0 font-bold">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
+                                    <span className="text-zinc-700 shrink-0 font-bold">[{new Date(log.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}]</span>
                                     {log.nodeId === 'manager' ? (
                                       <div className="flex-1">
                                         <span className="text-amber-500 font-bold uppercase tracking-tighter">Manager &gt; </span>
@@ -585,23 +593,30 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                                       <div className="flex-1 space-y-2">
                                         <div>
                                           <span className="text-indigo-400 font-bold uppercase tracking-tighter">{log.agentName} (V{log.version}) &gt; </span>
-                                          <span className={log.status === 'failed' ? 'text-red-400' : log.status === 'stopped' ? 'text-amber-500' : 'text-zinc-300'}>
-                                            {log.status === 'running' ? 'Thinking...' : log.status === 'failed' ? `Error: ${log.error || 'Execution halted'}` : log.output?.slice(0, 180) + (log.output && log.output.length > 180 ? '...' : '')}
+                                          <span className={log.status === 'failed' ? 'text-red-400 font-bold' : log.status === 'stopped' ? 'text-amber-500' : 'text-zinc-300'}>
+                                            {log.status === 'running' ? 'Thinking...' : log.status === 'failed' ? `Error: ${log.error || 'Execution halted'}` : log.output}
                                           </span>
                                         </div>
+                                        {log.toolCalls?.map((tc: any, i: number) => (
+                                          <div key={i} className="text-[10px] text-amber-500 font-bold flex items-center gap-2 pl-4 border-l-2 border-amber-900/40 ml-1">
+                                            <Hammer className="w-3 h-3" /> Invoke Tool: {tc.name}
+                                          </div>
+                                        ))}
                                       </div>
                                     )}
                                   </div>
                                 </div>
                               ))}
                               {isExecuting && <div className="flex items-center gap-3 text-indigo-400 text-[10px] font-bold uppercase tracking-widest pl-2">
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Processing...
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                Processing next instruction...
                               </div>}
                             </div>
                          </div>
                        )}
                     </section>
 
+                    {/* AGENT TRACE DETAIL SECTION */}
                     <section className="space-y-4 pb-20">
                        <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
                          <Layers className="w-4 h-4" /> Agent Traces
@@ -633,9 +648,9 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                                <div className="text-[11px] font-bold text-zinc-500 uppercase tracking-[0.2em] mb-8 flex items-center justify-between">
                                   <div className="flex items-center gap-3"><FileText className="w-4 h-4" /> Agent Trace Output</div>
                                   <div className={`px-3 py-1 rounded-lg border text-[10px] font-bold uppercase ${
-                                      activeLog.status === 'failed' ? 'bg-red-900/20 border-red-500 text-red-400' :
-                                      activeLog.status === 'completed' ? 'bg-emerald-900/20 border-emerald-500 text-emerald-400' :
-                                      'bg-indigo-900/20 border-indigo-500 text-indigo-400'
+                                      activeLog.status === 'failed' ? 'bg-red-900/10 border-red-500 text-red-400 shadow-lg shadow-red-900/20' :
+                                      activeLog.status === 'completed' ? 'bg-emerald-900/10 border-emerald-500 text-emerald-400' :
+                                      'bg-indigo-900/10 border-indigo-500 text-indigo-400'
                                   }`}>
                                       Status: {activeLog.status}
                                   </div>
@@ -648,8 +663,8 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                                       <Cpu className="w-6 h-6 text-indigo-400 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
                                    </div>
                                    <div className="text-center space-y-1">
-                                       <p className="text-base font-bold text-zinc-300">Agent Thinking...</p>
-                                       <p className="text-xs text-zinc-500 italic animate-pulse">Engaging neural patterns...</p>
+                                       <p className="text-base font-bold text-zinc-300">Agent Thinking</p>
+                                       <p className="text-xs text-zinc-500 italic animate-pulse">Navigating internal logic layers...</p>
                                    </div>
                                  </div>
                                ) : activeLog.status === 'failed' ? (
@@ -658,19 +673,19 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                                         <AlertCircle className="w-8 h-8 text-red-500" />
                                     </div>
                                     <div>
-                                        <h4 className="text-xl font-bold text-red-400 mb-2">Execution Error</h4>
+                                        <h4 className="text-xl font-bold text-red-400 mb-2">Execution Halted</h4>
                                         <p className="text-sm text-red-200/60 max-w-lg leading-relaxed mb-6">
-                                            The agent failed to complete the task. Check the technical details below.
+                                            The agent encountered an error during processing. This is typically caused by prompt constraints, model refusal, or connectivity issues.
                                         </p>
-                                        <div className="bg-black/40 border border-red-900/30 p-5 rounded-2xl text-left mono text-xs text-red-400 w-full overflow-auto">
-                                            <span className="font-bold text-red-500 block mb-2 uppercase tracking-widest text-[10px]">Error Detail:</span>
-                                            {activeLog.error || 'No detailed error message provided.'}
+                                        <div className="bg-black/40 border border-red-900/30 p-5 rounded-2xl text-left mono text-xs text-red-400 w-full overflow-auto max-h-[200px] scrollbar-thin">
+                                            <span className="font-bold text-red-500 block mb-2 uppercase tracking-widest text-[10px]">Error Trace:</span>
+                                            {activeLog.error || 'The system was unable to capture a specific error reason. Please check the agent backstory and task definition.'}
                                         </div>
                                     </div>
                                  </div>
                                ) : (
                                  <div className="prose prose-md prose-invert max-w-none animate-in fade-in duration-500">
-                                    <Markdown>{activeLog.output || 'No output recorded.'}</Markdown>
+                                    <Markdown>{activeLog.output || 'No output text returned for this trace segment.'}</Markdown>
                                  </div>
                                )}
                             </div>
@@ -683,6 +698,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
              <div className="flex-1 flex flex-col items-center justify-center opacity-10 select-none grayscale py-40">
                 <Terminal className="w-32 h-32 mb-8 text-zinc-800" />
                 <h3 className="text-4xl font-bold uppercase tracking-[0.4em] text-zinc-700">Awaiting Signal</h3>
+                <p className="mt-4 text-sm font-medium uppercase tracking-widest text-zinc-800">Select or execute a blueprint to view traces</p>
              </div>
            )}
         </div>

@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
-import { Agent, AgentInput, DBModel, Tool } from '../types';
+import { Agent, AgentInput, DBModel, Tool, Engine } from '../types';
 import { dbService } from '../services/db';
 import { Save, X, Settings2, Sparkles, MessageSquare, Fingerprint, Hammer, Plus, Trash2, Cpu, ChevronDown, Check, Search, Filter } from 'lucide-react';
 
@@ -53,7 +52,8 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({ agent, tools, onSave, 
   const [formData, setFormData] = useState<Agent>({ ...agent, toolIds: agent.toolIds || [] });
   const [activeTab, setActiveTab] = useState<'metadata' | 'prompt' | 'config' | 'tools'>('metadata');
   const [domains, setDomains] = useState<string[]>([]);
-  const [engines, setEngines] = useState<{id: number, name: string}[]>([]);
+  // Fix: Explicitly use Engine interface from types.ts to ensure is_active property is recognized
+  const [engines, setEngines] = useState<Engine[]>([]);
   const [models, setModels] = useState<DBModel[]>([]);
 
   // Tool filtering state
@@ -74,7 +74,7 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({ agent, tools, onSave, 
       // Default engine/model if empty
       if (!formData.config.aiEngine && e.length > 0) {
         const defaultEngine = e[0];
-        const defaultModel = m.find(x => x.engine_id === defaultEngine.id);
+        const defaultModel = m.find(x => x.engine_id === defaultEngine.id && x.is_active);
         setFormData(prev => ({
           ...prev,
           config: { 
@@ -135,7 +135,7 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({ agent, tools, onSave, 
 
   const filteredModels = models.filter(m => {
     const engine = engines.find(e => e.name === formData.config.aiEngine);
-    return engine && m.engine_id === engine.id;
+    return engine && m.engine_id === engine.id && m.is_active;
   });
 
   const filteredTools = useMemo(() => {
@@ -359,7 +359,7 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({ agent, tools, onSave, 
                         onChange={(e) => setFormData({ ...formData, config: { ...formData.config, aiEngine: e.target.value } })}
                         className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 focus:outline-none appearance-none"
                       >
-                        {engines.map(eng => <option key={eng.id} value={eng.name}>{eng.name}</option>)}
+                        {engines.filter(eng => eng.is_active).map(eng => <option key={eng.id} value={eng.name}>{eng.name}</option>)}
                       </select>
                       <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
                     </div>

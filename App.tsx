@@ -9,12 +9,13 @@ import { ExecutionPanel } from './components/ExecutionPanel';
 import { ToolsList } from './components/ToolsList';
 import { ToolEditor } from './components/ToolEditor';
 import { ChatInterface } from './components/ChatInterface';
+import { SettingsView } from './components/SettingsView';
 import { Agent, Workflow, Tool } from './types';
 import { dbService } from './services/db';
 import { Settings, Users, GitBranch, Play, Loader2, PanelRight, Hammer, MessageSquare } from 'lucide-react';
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'agents' | 'workflows' | 'execution' | 'tools' | 'chat'>('agents');
+  const [activeTab, setActiveTab] = useState<'agents' | 'workflows' | 'execution' | 'tools' | 'chat' | 'settings'>('agents');
   const [agents, setAgents] = useState<Agent[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
@@ -125,7 +126,7 @@ const App: React.FC = () => {
     return (
       <div className="h-screen w-full bg-[#09090b] flex flex-col items-center justify-center gap-4">
         <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
-        <p className="text-zinc-500 font-medium animate-pulse uppercase tracking-widest text-xs">Connecting to PostgreSQL...</p>
+        <p className="text-zinc-500 font-medium animate-pulse uppercase tracking-widest text-xs">Accessing System Registry...</p>
       </div>
     );
   }
@@ -133,9 +134,9 @@ const App: React.FC = () => {
   return (
     <div className="flex h-screen w-full bg-[#09090b] text-zinc-100 overflow-hidden relative">
       <Sidebar 
-        activeTab={activeTab} 
+        activeTab={activeTab as any} 
         onTabChange={(tab) => {
-          setActiveTab(tab);
+          setActiveTab(tab as any);
           setEditingAgent(null);
           setEditingWorkflow(null);
           setEditingTool(null);
@@ -168,6 +169,9 @@ const App: React.FC = () => {
             </button>
             <button onClick={() => setActiveTab('chat')} className={`p-2 rounded-lg transition-all ${activeTab === 'chat' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-600 hover:text-zinc-400'}`}>
               <MessageSquare className="w-5 h-5" />
+            </button>
+            <button onClick={() => setActiveTab('settings')} className={`p-2 rounded-lg transition-all ${activeTab === 'settings' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-600 hover:text-zinc-400'}`}>
+              <Settings className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -276,6 +280,10 @@ const App: React.FC = () => {
 
         {activeTab === 'chat' && (
           <ChatInterface />
+        )}
+
+        {activeTab === 'settings' && (
+          <SettingsView />
         )}
       </main>
     </div>

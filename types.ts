@@ -109,6 +109,24 @@ export interface DBModel {
   name: string;
   full_name: string;
   max_tokens: number;
+  is_active?: boolean;
+}
+
+export interface Engine {
+  id: number;
+  name: string;
+  description?: string;
+  is_active?: boolean;
+  api_key?: string;
+}
+
+export interface PlatformSettings {
+  id: string;
+  default_rpm: number;
+  default_timeout: number;
+  default_max_iterations: number;
+  enable_thinking_mode: boolean;
+  updated_at: number;
 }
 
 export interface ChatSession {

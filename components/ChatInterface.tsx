@@ -4,7 +4,7 @@ import { GoogleGenAI } from "@google/genai";
 import Markdown from 'markdown-to-jsx';
 import { dbService } from '../services/db';
 import { ChatMessage, ChatSession, DBModel } from '../types';
-import { Send, User, Cpu, Trash2, Loader2, Sparkles, Plus, Search, MessageSquare, History, Edit2, RotateCcw } from 'lucide-react';
+import { Send, User, Cpu, Trash2, Loader2, Sparkles, Plus, Search, MessageSquare, History, Edit2, RotateCcw, AlertCircle, X } from 'lucide-react';
 
 export const ChatInterface: React.FC = () => {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -16,6 +16,7 @@ export const ChatInterface: React.FC = () => {
   const [selectedModel, setSelectedModel] = useState('gemini-3-flash-preview');
   const [sessionSearch, setSessionSearch] = useState('');
   const [isNewChatDraft, setIsNewChatDraft] = useState(false);
+  const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
   
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -63,20 +64,27 @@ export const ChatInterface: React.FC = () => {
     setInput('');
   };
 
-  const deleteSession = async (id: string, e: React.MouseEvent) => {
+  const confirmDeleteSession = async () => {
+    if (!sessionToDelete) return;
+    try {
+      await dbService.deleteChatSession(sessionToDelete);
+      setSessions(prev => prev.filter(s => s.id !== sessionToDelete));
+      if (activeSessionId === sessionToDelete) {
+        setActiveSessionId(null);
+        setMessages([]);
+        setIsNewChatDraft(false);
+      }
+      setSessionToDelete(null);
+    } catch (err) {
+      console.error("Deletion failed:", err);
+      alert("Failed to delete the chat session.");
+    }
+  };
+
+  const handleDeleteClick = (id: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (confirm("Permanently delete this conversation and all its messages?")) {
-      try {
-        await dbService.deleteChatSession(id);
-        setSessions(prev => prev.filter(s => s.id !== id));
-        if (activeSessionId === id) {
-          initiateNewChat();
-        }
-      } catch (err) {
-        console.error("Deletion failed:", err);
-      }
-    }
+    setSessionToDelete(id);
   };
 
   const handleEditMessage = async (msg: ChatMessage) => {
@@ -121,7 +129,7 @@ export const ChatInterface: React.FC = () => {
     let currentSessionId = activeSessionId;
     const isFirstInSession = messages.length === 0;
 
-    if (isNewChatDraft) {
+    if (isNewChatDraft || !currentSessionId) {
       const newSid = crypto.randomUUID();
       const newSession: ChatSession = {
         id: newSid,
@@ -141,8 +149,6 @@ export const ChatInterface: React.FC = () => {
         return;
       }
     }
-
-    if (!currentSessionId) return;
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
@@ -236,7 +242,7 @@ export const ChatInterface: React.FC = () => {
             <div key={s.id} className="group relative">
               <button
                 onClick={() => { setActiveSessionId(s.id); setIsNewChatDraft(false); }}
-                className={`w-full p-4 rounded-xl border text-left transition-all pr-10 ${
+                className={`w-full p-4 rounded-xl border text-left transition-all pr-12 ${
                   activeSessionId === s.id && !isNewChatDraft ? 'bg-indigo-600/10 border-indigo-600/40' : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
                 }`}
               >
@@ -249,8 +255,8 @@ export const ChatInterface: React.FC = () => {
                 </div>
               </button>
               <button 
-                onClick={(e) => deleteSession(s.id, e)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                onClick={(e) => handleDeleteClick(s.id, e)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all hover:bg-zinc-800 rounded-md"
                 title="Delete Session"
               >
                 <Trash2 className="w-4 h-4" />
@@ -405,6 +411,43 @@ export const ChatInterface: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Confirmation Modal */}
+      {sessionToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#0c0c0e] border border-zinc-800 p-8 rounded-3xl max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-4 text-amber-500 mb-6">
+              <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/20">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-zinc-100">Delete Conversation?</h3>
+            </div>
+            <p className="text-sm text-zinc-400 leading-relaxed mb-8">
+              This will permanently remove the conversation and all associated message history from the database. This action cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setSessionToDelete(null)}
+                className="flex-1 px-4 py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-xl font-bold text-xs transition-all border border-zinc-800"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmDeleteSession}
+                className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold text-xs transition-all shadow-lg shadow-red-600/20"
+              >
+                Delete
+              </button>
+            </div>
+            <button 
+              onClick={() => setSessionToDelete(null)}
+              className="absolute top-4 right-4 text-zinc-600 hover:text-zinc-300 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

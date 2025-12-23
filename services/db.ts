@@ -1,6 +1,6 @@
 
 import { neon } from '@neondatabase/serverless';
-import { Agent, Workflow, ExecutionLog, DBModel, WorkflowExecution, Tool, ChatMessage, ChatSession } from '../types';
+import { Agent, Workflow, ExecutionLog, DBModel, WorkflowExecution, Tool, ChatMessage, ChatSession, Engine, PlatformSettings } from '../types';
 
 const sql = neon(`postgres://neondb_owner:npg_o5YcBDbpueE8@ep-dawn-river-a1yzfjdr-pooler.ap-southeast-1.aws.neon.tech/neondb`);
 
@@ -23,6 +23,11 @@ export const dbService = {
         )
       `;
 
+      // Migration: Ensure all columns exist in ai_engines
+      await sql`ALTER TABLE "AI_Agent".ai_engines ADD COLUMN IF NOT EXISTS description TEXT`;
+      await sql`ALTER TABLE "AI_Agent".ai_engines ADD COLUMN IF NOT EXISTS api_key TEXT`;
+      await sql`ALTER TABLE "AI_Agent".ai_engines ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE`;
+
       await sql`
         CREATE TABLE IF NOT EXISTS "AI_Agent".models (
           id TEXT PRIMARY KEY,
@@ -32,19 +37,47 @@ export const dbService = {
           max_tokens INTEGER NOT NULL
         )
       `;
+      
+      // Migration: Ensure model activation column
+      await sql`ALTER TABLE "AI_Agent".models ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE`;
 
+      await sql`
+        CREATE TABLE IF NOT EXISTS "AI_Agent".settings (
+          id TEXT PRIMARY KEY,
+          default_rpm INTEGER DEFAULT 10,
+          default_timeout INTEGER DEFAULT 60,
+          default_max_iterations INTEGER DEFAULT 5,
+          enable_thinking_mode BOOLEAN DEFAULT TRUE,
+          updated_at BIGINT
+        )
+      `;
+
+      // Seed Domains
       const domains = ['AI/ML', 'Backend Engineering', 'Data Engineering', 'Frontend Engineering', 'Platform Engineering', 'Quality Engineering'];
       for (const d of domains) {
         await sql`INSERT INTO "AI_Agent".domains (name) VALUES (${d}) ON CONFLICT DO NOTHING`;
       }
 
-      await sql`INSERT INTO "AI_Agent".ai_engines (id, name) VALUES (1, 'GoogleAI') ON CONFLICT DO NOTHING`;
+      // Seed Engines
+      await sql`
+        INSERT INTO "AI_Agent".ai_engines (id, name, description) 
+        VALUES (1, 'GoogleAI', 'Google Gemini API - Native integration for Flash and Pro models.') 
+        ON CONFLICT (id) DO UPDATE SET description = EXCLUDED.description
+      `;
       
+      // Seed Models
       await sql`
         INSERT INTO "AI_Agent".models (id, engine_id, name, full_name, max_tokens)
         VALUES 
           ('gemini-3-flash-preview', 1, 'Gemini 3 Flash (Fast & Lean)', 'gemini-3-flash-preview', 16384),
           ('gemini-3-pro-preview', 1, 'Gemini 3 Pro (Complex Reasoning)', 'gemini-3-pro-preview', 64000)
+        ON CONFLICT (id) DO NOTHING
+      `;
+
+      // Seed Initial Settings
+      await sql`
+        INSERT INTO "AI_Agent".settings (id, updated_at)
+        VALUES ('global', ${Date.now()})
         ON CONFLICT DO NOTHING
       `;
 
@@ -60,8 +93,6 @@ export const dbService = {
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `;
-
-      await sql`ALTER TABLE "AI_Agent".tools ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'javascript'`;
 
       await sql`
         CREATE TABLE IF NOT EXISTS "AI_Agent".agents (
@@ -110,8 +141,6 @@ export const dbService = {
         )
       `;
 
-      await sql`ALTER TABLE "AI_Agent".execution_logs ADD COLUMN IF NOT EXISTS duration INTEGER`;
-
       await sql`
         CREATE TABLE IF NOT EXISTS "AI_Agent".chat_sessions (
           id UUID PRIMARY KEY,
@@ -125,6 +154,7 @@ export const dbService = {
       await sql`
         CREATE TABLE IF NOT EXISTS "AI_Agent".chat_messages (
           id UUID PRIMARY KEY,
+          session_id UUID REFERENCES "AI_Agent".chat_sessions(id) ON DELETE CASCADE,
           role TEXT NOT NULL,
           content TEXT NOT NULL,
           timestamp BIGINT NOT NULL,
@@ -132,13 +162,29 @@ export const dbService = {
         )
       `;
 
-      await sql`ALTER TABLE "AI_Agent".chat_messages ADD COLUMN IF NOT EXISTS session_id UUID REFERENCES "AI_Agent".chat_sessions(id) ON DELETE CASCADE`;
-      await sql`ALTER TABLE "AI_Agent".chat_messages DROP COLUMN IF EXISTS model`;
-
-      console.log('PostgreSQL Schema & Cascading Deletes Initialized');
+      console.log('PostgreSQL Schema & Management Tables Initialized');
     } catch (error) {
       console.error('Failed to initialize schema:', error);
+      throw error;
     }
+  },
+
+  async getPlatformSettings(): Promise<PlatformSettings> {
+    const rows = await sql`SELECT * FROM "AI_Agent".settings WHERE id = 'global'`;
+    return rows[0] as unknown as PlatformSettings;
+  },
+
+  async savePlatformSettings(settings: Partial<PlatformSettings>) {
+    await sql`
+      UPDATE "AI_Agent".settings 
+      SET 
+        default_rpm = ${settings.default_rpm},
+        default_timeout = ${settings.default_timeout},
+        default_max_iterations = ${settings.default_max_iterations},
+        enable_thinking_mode = ${settings.enable_thinking_mode},
+        updated_at = ${Date.now()}
+      WHERE id = 'global'
+    `;
   },
 
   async getDomains(): Promise<string[]> {
@@ -146,9 +192,24 @@ export const dbService = {
     return rows.map(r => r.name);
   },
 
-  async getEngines(): Promise<{id: number, name: string}[]> {
-    const rows = await sql`SELECT id, name FROM "AI_Agent".ai_engines ORDER BY name ASC`;
-    return rows.map(r => ({ id: r.id, name: r.name }));
+  async getEngines(): Promise<Engine[]> {
+    const rows = await sql`SELECT * FROM "AI_Agent".ai_engines ORDER BY name ASC`;
+    return rows.map(r => ({ 
+      id: r.id, 
+      name: r.name, 
+      description: r.description, 
+      is_active: r.is_active,
+      api_key: r.api_key
+    }));
+  },
+
+  async updateEngine(id: number, updates: Partial<Engine>) {
+    if (updates.api_key !== undefined) {
+      await sql`UPDATE "AI_Agent".ai_engines SET api_key = ${updates.api_key} WHERE id = ${id}`;
+    }
+    if (updates.is_active !== undefined) {
+      await sql`UPDATE "AI_Agent".ai_engines SET is_active = ${updates.is_active} WHERE id = ${id}`;
+    }
   },
 
   async getModels(): Promise<DBModel[]> {
@@ -158,8 +219,13 @@ export const dbService = {
       engine_id: Number(r.engine_id),
       name: r.name,
       full_name: r.full_name,
-      max_tokens: Number(r.max_tokens)
+      max_tokens: Number(r.max_tokens),
+      is_active: r.is_active
     }));
+  },
+
+  async updateModelStatus(id: string, isActive: boolean) {
+    await sql`UPDATE "AI_Agent".models SET is_active = ${isActive} WHERE id = ${id}`;
   },
 
   async getTools(): Promise<Tool[]> {
@@ -291,38 +357,34 @@ export const dbService = {
   async getWorkflowExecutions(workflowId?: string): Promise<WorkflowExecution[]> {
     const query = workflowId 
       ? sql`
-          SELECT * FROM (
-            SELECT DISTINCT ON (e.execution_id) 
-              e.execution_id, 
-              e.workflow_id, 
-              e.timestamp, 
-              e.status, 
-              e.duration,
-              (w.metadata->>'name') as workflow_name 
-            FROM "AI_Agent".execution_logs e
-            JOIN "AI_Agent".workflows w ON e.workflow_id = w.id
-            WHERE e.workflow_id = ${workflowId}::UUID 
-            ORDER BY e.execution_id, e.timestamp DESC
-          ) sub
-          ORDER BY sub.timestamp DESC`
+          SELECT 
+            e.execution_id as id, 
+            e.workflow_id, 
+            MAX(e.duration) as duration, 
+            MAX(e.timestamp) as timestamp, 
+            (w.metadata->>'name') as workflow_name,
+            (SELECT status FROM "AI_Agent".execution_logs WHERE execution_id = e.execution_id ORDER BY timestamp DESC LIMIT 1) as status
+          FROM "AI_Agent".execution_logs e
+          JOIN "AI_Agent".workflows w ON e.workflow_id = w.id
+          WHERE e.workflow_id = ${workflowId}::UUID
+          GROUP BY e.execution_id, e.workflow_id, w.metadata->>'name'
+          ORDER BY timestamp DESC`
       : sql`
-          SELECT * FROM (
-            SELECT DISTINCT ON (e.execution_id) 
-              e.execution_id, 
-              e.workflow_id, 
-              e.timestamp, 
-              e.status, 
-              e.duration,
-              (w.metadata->>'name') as workflow_name 
-            FROM "AI_Agent".execution_logs e
-            JOIN "AI_Agent".workflows w ON e.workflow_id = w.id
-            ORDER BY e.execution_id, e.timestamp DESC
-          ) sub
-          ORDER BY sub.timestamp DESC`;
+          SELECT 
+            e.execution_id as id, 
+            e.workflow_id, 
+            MAX(e.duration) as duration, 
+            MAX(e.timestamp) as timestamp, 
+            (w.metadata->>'name') as workflow_name,
+            (SELECT status FROM "AI_Agent".execution_logs WHERE execution_id = e.execution_id ORDER BY timestamp DESC LIMIT 1) as status
+          FROM "AI_Agent".execution_logs e
+          JOIN "AI_Agent".workflows w ON e.workflow_id = w.id
+          GROUP BY e.execution_id, e.workflow_id, w.metadata->>'name'
+          ORDER BY timestamp DESC`;
     
     const rows = await query;
     return rows.map(row => ({
-      id: row.execution_id,
+      id: row.id,
       workflow_id: row.workflow_id,
       workflow_name: row.workflow_name || 'Unknown Workflow',
       status: row.status as any,
@@ -353,7 +415,6 @@ export const dbService = {
   },
 
   async deleteChatSession(id: string) {
-    // Foreign key CASCADE will delete messages
     await sql`DELETE FROM "AI_Agent".chat_sessions WHERE id = ${id}::UUID`;
   },
 

@@ -4,12 +4,6 @@ import { AgentConfig, GeminiModel, Tool } from "../types";
 import { dbService } from "./db";
 
 export class GeminiService {
-  constructor() {
-    if (!process.env.API_KEY) {
-      throw new Error("API_KEY environment variable is not defined");
-    }
-  }
-
   async generate(
     model: string,
     systemInstruction: string,
@@ -21,6 +15,22 @@ export class GeminiService {
     try {
       const allModels = await dbService.getModels();
       const modelInfo = allModels.find(m => m.id === model);
+      
+      if (modelInfo && modelInfo.is_active === false) {
+        throw new Error(`The requested model '${model}' is currently deactivated in platform settings.`);
+      }
+
+      const engines = await dbService.getEngines();
+      const engineInfo = engines.find(e => e.id === modelInfo?.engine_id);
+      
+      // Use DB key if present, fallback to process.env.API_KEY
+      const apiKey = engineInfo?.api_key || process.env.API_KEY;
+      
+      if (!apiKey) {
+        throw new Error(`No API Key provided for engine '${engineInfo?.name || 'Unknown'}'. Please configure it in Settings.`);
+      }
+
+      const settings = await dbService.getPlatformSettings();
       const maxTokens = modelInfo?.max_tokens || 2048;
 
       // Transform Tools to Gemini FunctionDeclarations
@@ -30,7 +40,7 @@ export class GeminiService {
         parameters: t.parameters
       }));
 
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: model,
         contents: prompt,
@@ -41,7 +51,7 @@ export class GeminiService {
           maxOutputTokens: maxTokens,
           responseMimeType: responseMimeType,
           tools: toolConfigs && toolConfigs.length > 0 ? [{ functionDeclarations: toolConfigs }] : undefined,
-          ...(model.startsWith('gemini-3') || model.startsWith('gemini-2.5') 
+          ...(settings.enable_thinking_mode && (model.startsWith('gemini-3') || model.startsWith('gemini-2.5'))
             ? { thinkingConfig: { thinkingBudget: 1024 } } 
             : {})
         }

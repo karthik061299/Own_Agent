@@ -3,8 +3,8 @@ import React from 'react';
 import { Users, GitBranch, Play, Settings, Cpu, PanelLeftClose, Hammer, MessageSquare } from 'lucide-react';
 
 interface SidebarProps {
-  activeTab: 'agents' | 'workflows' | 'execution' | 'tools' | 'chat';
-  onTabChange: (tab: 'agents' | 'workflows' | 'execution' | 'tools' | 'chat') => void;
+  activeTab: 'agents' | 'workflows' | 'execution' | 'tools' | 'chat' | 'settings';
+  onTabChange: (tab: 'agents' | 'workflows' | 'execution' | 'tools' | 'chat' | 'settings') => void;
   isCollapsed: boolean;
   setIsCollapsed: (collapsed: boolean) => void;
 }
@@ -61,8 +61,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isColl
           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-xs font-medium text-zinc-400 uppercase tracking-widest">Local-Only Instance</span>
         </div>
-        <button className="w-full mt-4 flex items-center gap-3 px-4 py-2 text-sm text-zinc-500 hover:text-zinc-300 transition-colors">
-          <Settings className="w-4 h-4" />
+        <button 
+          onClick={() => onTabChange('settings')}
+          className={`w-full mt-4 flex items-center gap-3 px-4 py-2 text-sm transition-colors ${
+            activeTab === 'settings' ? 'text-indigo-400 font-bold' : 'text-zinc-500 hover:text-zinc-300'
+          }`}
+        >
+          <Settings className={`w-4 h-4 ${activeTab === 'settings' ? 'text-indigo-400' : ''}`} />
           Settings
         </button>
       </div>

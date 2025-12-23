@@ -314,7 +314,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
                           onChange={(e) => setFormData({ ...formData, metadata: { ...formData.metadata, managerModel: e.target.value }})}
                           className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-[10px] text-zinc-200"
                         >
-                          {models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                          {models.filter(m => m.is_active).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                         </select>
                       </div>
                       <ManagerSlider 
