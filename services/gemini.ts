@@ -1,6 +1,6 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { AgentConfig, GeminiModel } from "../types";
+import { AgentConfig, GeminiModel, Tool } from "../types";
 import { dbService } from "./db";
 
 export class GeminiService {
@@ -15,12 +15,20 @@ export class GeminiService {
     systemInstruction: string,
     prompt: string,
     config: Partial<AgentConfig>,
-    responseMimeType?: "application/json" | "text/plain"
+    responseMimeType?: "application/json" | "text/plain",
+    tools?: Tool[]
   ) {
     try {
       const allModels = await dbService.getModels();
       const modelInfo = allModels.find(m => m.id === model);
       const maxTokens = modelInfo?.max_tokens || 2048;
+
+      // Transform Tools to Gemini FunctionDeclarations
+      const toolConfigs = tools?.map(t => ({
+        name: t.className,
+        description: t.description,
+        parameters: t.parameters
+      }));
 
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
@@ -32,12 +40,14 @@ export class GeminiService {
           topP: config.topP,
           maxOutputTokens: maxTokens,
           responseMimeType: responseMimeType,
+          tools: toolConfigs && toolConfigs.length > 0 ? [{ functionDeclarations: toolConfigs }] : undefined,
           ...(model.startsWith('gemini-3') || model.startsWith('gemini-2.5') 
             ? { thinkingConfig: { thinkingBudget: 1024 } } 
             : {})
         }
       });
-      return response.text || "No response received.";
+      
+      return response;
     } catch (error: any) {
       console.error("Gemini Generation Error:", error);
       throw new Error(error.message || "Failed to generate content");
@@ -78,13 +88,14 @@ export class GeminiService {
 
     const prompt = `Last Agent Output: "${lastOutput}". Determine the next step.`;
 
-    const result = await this.generate(
+    const resultResponse = await this.generate(
       managerModel, 
       systemInstruction, 
       prompt, 
       { temperature: managerTemp, topP: managerTopP },
       "application/json"
     );
+    const result = resultResponse.text || '';
 
     try {
       const jsonStart = result.indexOf('{');

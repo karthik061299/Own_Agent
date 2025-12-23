@@ -1,6 +1,6 @@
 
 import { neon } from '@neondatabase/serverless';
-import { Agent, Workflow, ExecutionLog, DBModel, WorkflowExecution } from '../types';
+import { Agent, Workflow, ExecutionLog, DBModel, WorkflowExecution, Tool } from '../types';
 
 const sql = neon(`postgres://neondb_owner:npg_o5YcBDbpueE8@ep-dawn-river-a1yzfjdr-pooler.ap-southeast-1.aws.neon.tech/neondb`);
 
@@ -51,6 +51,22 @@ export const dbService = {
       `;
 
       await sql`
+        CREATE TABLE IF NOT EXISTS "AI_Agent".tools (
+          id UUID PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL,
+          class_name TEXT NOT NULL,
+          code TEXT NOT NULL,
+          language TEXT DEFAULT 'javascript',
+          parameters JSONB NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `;
+
+      // Migration: Ensure language column exists
+      await sql`ALTER TABLE "AI_Agent".tools ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'javascript'`;
+
+      await sql`
         CREATE TABLE IF NOT EXISTS "AI_Agent".agents (
           id UUID PRIMARY KEY,
           name TEXT NOT NULL,
@@ -63,9 +79,13 @@ export const dbService = {
           inputs JSONB DEFAULT '[]',
           expected_output TEXT NOT NULL,
           config JSONB NOT NULL,
+          tool_ids UUID[] DEFAULT '{}',
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `;
+
+      // Migration: Ensure tool_ids column exists for users with older schemas
+      await sql`ALTER TABLE "AI_Agent".agents ADD COLUMN IF NOT EXISTS tool_ids UUID[] DEFAULT '{}'`;
 
       await sql`
         CREATE TABLE IF NOT EXISTS "AI_Agent".workflows (
@@ -90,11 +110,72 @@ export const dbService = {
           error TEXT,
           node_id TEXT,
           version INTEGER DEFAULT 1,
+          tool_calls JSONB DEFAULT '[]',
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `;
 
-      console.log('PostgreSQL Schema Initialized');
+      // Migration: Ensure tool_calls column exists for users with older schemas
+      await sql`ALTER TABLE "AI_Agent".execution_logs ADD COLUMN IF NOT EXISTS tool_calls JSONB DEFAULT '[]'`;
+
+      // Seed Initial Tools if none exist
+      const toolCount = await sql`SELECT count(*) FROM "AI_Agent".tools`;
+      if (Number(toolCount[0].count) === 0) {
+        const sampleTools = [
+          {
+            id: 'd9e5b072-4d2c-4f7d-8e6a-7d9c8b5a4e32',
+            name: 'GitHub File Reader',
+            description: 'Reads content from a GitHub repository file using fetch.',
+            class_name: 'GitHubReader',
+            language: 'javascript',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                owner: { type: 'STRING', description: 'GitHub username or org' },
+                repo: { type: 'STRING', description: 'Repository name' },
+                path: { type: 'STRING', description: 'Path to the file' }
+              },
+              required: ['owner', 'repo', 'path']
+            },
+            code: `async ({ owner, repo, path }) => {
+  const url = \`https://raw.githubusercontent.com/\${owner}/\${repo}/main/\${path}\`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(\`Failed to read file: \${response.statusText}\`);
+  return await response.text();
+}`
+          },
+          {
+            id: 'a1b2c3d4-e5f6-4a5b-b6c7-d8e9f0a1b2c3',
+            name: 'String Manipulator',
+            description: 'Performs basic string operations like reverse or upper case.',
+            class_name: 'StringUtils',
+            language: 'javascript',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                text: { type: 'STRING', description: 'Input text' },
+                operation: { type: 'STRING', description: 'Operation: uppercase, lowercase, reverse' }
+              },
+              required: ['text', 'operation']
+            },
+            code: `({ text, operation }) => {
+  if (operation === 'uppercase') return text.toUpperCase();
+  if (operation === 'lowercase') return text.toLowerCase();
+  if (operation === 'reverse') return text.split('').reverse().join('');
+  return text;
+}`
+          }
+        ];
+
+        for (const t of sampleTools) {
+          await sql`
+            INSERT INTO "AI_Agent".tools (id, name, description, class_name, parameters, code, language)
+            VALUES (${t.id}::UUID, ${t.name}, ${t.description}, ${t.class_name}, ${JSON.stringify(t.parameters)}, ${t.code}, ${t.language})
+          `;
+        }
+      }
+
+      console.log('PostgreSQL Schema & Seed Tools Initialized');
     } catch (error) {
       console.error('Failed to initialize schema:', error);
     }
@@ -121,6 +202,37 @@ export const dbService = {
     }));
   },
 
+  async getTools(): Promise<Tool[]> {
+    const rows = await sql`SELECT * FROM "AI_Agent".tools ORDER BY created_at DESC`;
+    return rows.map(r => ({
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      className: r.class_name,
+      code: r.code,
+      language: r.language as any,
+      parameters: r.parameters
+    }));
+  },
+
+  async saveTool(tool: Tool) {
+    await sql`
+      INSERT INTO "AI_Agent".tools (id, name, description, class_name, code, parameters, language)
+      VALUES (${tool.id}::UUID, ${tool.name}, ${tool.description}, ${tool.className}, ${tool.code}, ${JSON.stringify(tool.parameters)}, ${tool.language})
+      ON CONFLICT (id) DO UPDATE SET
+        name = EXCLUDED.name,
+        description = EXCLUDED.description,
+        class_name = EXCLUDED.class_name,
+        code = EXCLUDED.code,
+        parameters = EXCLUDED.parameters,
+        language = EXCLUDED.language
+    `;
+  },
+
+  async deleteTool(id: string) {
+    await sql`DELETE FROM "AI_Agent".tools WHERE id = ${id}::UUID`;
+  },
+
   async getAgents(): Promise<Agent[]> {
     const rows = await sql`SELECT * FROM "AI_Agent".agents ORDER BY created_at DESC`;
     return rows.map(row => ({
@@ -134,14 +246,15 @@ export const dbService = {
       taskDescription: row.task_description,
       inputs: row.inputs,
       expectedOutput: row.expected_output,
-      config: row.config
+      config: row.config,
+      toolIds: row.tool_ids || []
     }));
   },
 
   async saveAgent(agent: Agent) {
     await sql`
-      INSERT INTO "AI_Agent".agents (id, name, description, role, domain, goal, backstory, task_description, inputs, expected_output, config)
-      VALUES (${agent.id}::UUID, ${agent.name}, ${agent.description}, ${agent.role}, ${agent.domain}, ${agent.goal}, ${agent.backstory}, ${agent.taskDescription}, ${JSON.stringify(agent.inputs)}, ${agent.expectedOutput}, ${JSON.stringify(agent.config)})
+      INSERT INTO "AI_Agent".agents (id, name, description, role, domain, goal, backstory, task_description, inputs, expected_output, config, tool_ids)
+      VALUES (${agent.id}::UUID, ${agent.name}, ${agent.description}, ${agent.role}, ${agent.domain}, ${agent.goal}, ${agent.backstory}, ${agent.taskDescription}, ${JSON.stringify(agent.inputs)}, ${agent.expectedOutput}, ${JSON.stringify(agent.config)}, ${agent.toolIds || []})
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         description = EXCLUDED.description,
@@ -152,7 +265,8 @@ export const dbService = {
         task_description = EXCLUDED.task_description,
         inputs = EXCLUDED.inputs,
         expected_output = EXCLUDED.expected_output,
-        config = EXCLUDED.config
+        config = EXCLUDED.config,
+        tool_ids = EXCLUDED.tool_ids
     `;
   },
 
@@ -186,12 +300,13 @@ export const dbService = {
 
   async saveLog(workflowId: string, log: ExecutionLog) {
     await sql`
-      INSERT INTO "AI_Agent".execution_logs (id, workflow_id, execution_id, timestamp, agent_name, status, input, output, error, node_id, version)
-      VALUES (${log.id}::UUID, ${workflowId}::UUID, ${log.execution_id}::UUID, ${log.timestamp}, ${log.agentName}, ${log.status}, ${log.input}, ${log.output}, ${log.error}, ${log.nodeId}, ${log.version || 1})
+      INSERT INTO "AI_Agent".execution_logs (id, workflow_id, execution_id, timestamp, agent_name, status, input, output, error, node_id, version, tool_calls)
+      VALUES (${log.id}::UUID, ${workflowId}::UUID, ${log.execution_id}::UUID, ${log.timestamp}, ${log.agentName}, ${log.status}, ${log.input}, ${log.output}, ${log.error}, ${log.nodeId}, ${log.version || 1}, ${JSON.stringify(log.toolCalls || [])})
       ON CONFLICT (id) DO UPDATE SET
         status = EXCLUDED.status,
         output = EXCLUDED.output,
-        error = EXCLUDED.error
+        error = EXCLUDED.error,
+        tool_calls = EXCLUDED.tool_calls
     `;
   },
 
@@ -207,12 +322,12 @@ export const dbService = {
       output: row.output,
       error: row.error,
       nodeId: row.node_id,
-      version: row.version
+      version: row.version,
+      toolCalls: row.tool_calls
     }));
   },
 
   async getWorkflowExecutions(workflowId?: string): Promise<WorkflowExecution[]> {
-    // We use a subquery to sort the results of DISTINCT ON by the overall timestamp descending
     const query = workflowId 
       ? sql`
           SELECT * FROM (

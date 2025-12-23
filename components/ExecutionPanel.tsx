@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Markdown from 'markdown-to-jsx';
-import { Workflow, Agent, ExecutionLog, WorkflowExecution, WorkflowType } from '../types';
+import { Workflow, Agent, ExecutionLog, WorkflowExecution, WorkflowType, Tool } from '../types';
 import { geminiService } from '../services/gemini';
 import { dbService } from '../services/db';
 import { 
@@ -9,15 +9,16 @@ import {
   AlertCircle, Trash2, ArrowRight, History, Zap, Settings, 
   Search, Calendar, Filter, ChevronRight, Clock, Box,
   Download, ChevronDown, ChevronUp, Layers, FileText, Square,
-  RotateCcw
+  RotateCcw, Hammer
 } from 'lucide-react';
 
 interface ExecutionPanelProps {
   workflows: Workflow[];
   agents: Agent[];
+  tools: Tool[];
 }
 
-export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agents }) => {
+export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agents, tools }) => {
   const [workflowSearch, setWorkflowSearch] = useState('');
   const [executionSearch, setExecutionSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('');
@@ -135,16 +136,14 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
     executionRef.current.active = false;
     const currentId = executionRef.current.currentExecutionId;
     
-    // Immediately stop any 'running' logs
     const runningLog = logsRef.current.find(l => l.status === 'running');
     if (runningLog) {
       await finishAndSaveLog(runningLog.id, { 
         status: 'stopped',
-        output: runningLog.output || '' // Keep whatever we have
+        output: runningLog.output || '' 
       });
     }
 
-    // Add a system log for clarity
     await addAndSaveLog(currentId, {
       nodeId: 'system',
       agentName: 'System',
@@ -155,6 +154,24 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
 
     setExecutions(prev => prev.map(ex => ex.id === currentId ? { ...ex, status: 'stopped' } : ex));
     setIsExecuting(false);
+  };
+
+  const executeTool = async (toolClassName: string, args: any, agentTools: Tool[]) => {
+    const tool = agentTools.find(t => t.className === toolClassName);
+    if (!tool) throw new Error(`Tool ${toolClassName} not found.`);
+    
+    // Check language compatibility for local execution
+    if (tool.language !== 'javascript') {
+      return `[Simulation Mode]: This agent invoked a ${tool.language} tool. In the local preview environment, the tool output is simulated to allow the workflow to continue. Input arguments were: ${JSON.stringify(args)}`;
+    }
+
+    try {
+      const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+      const fn = new AsyncFunction('args', tool.code);
+      return await fn(args);
+    } catch (err: any) {
+      throw new Error(`Tool Execution Failed (${tool.name}): ${err.message}`);
+    }
   };
 
   const startExecution = async () => {
@@ -177,9 +194,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
     }, ...prev]);
 
     try {
-      // FIX: Strictly follow the drag-and-drop sequence by starting with nodes[0]
       let currentNode = workflow.nodes[0];
-      
       let currentOutput = "";
       let iterations = 0;
       const MAX_ITERATIONS = 20;
@@ -189,6 +204,8 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
         iterations++;
         const agent = agents.find(a => a.id === currentNode.agentId);
         if (!agent) break;
+
+        const agentTools = tools.filter(t => agent.toolIds?.includes(t.id));
 
         const version = (agentIterationCounts.get(agent.id) || 0) + 1;
         agentIterationCounts.set(agent.id, version);
@@ -219,20 +236,55 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
         });
 
         try {
-          const output = await geminiService.generate(
+          const response = await geminiService.generate(
             agent.config.model,
             `Backstory: ${agent.backstory}\nGoal: ${agent.goal}\nExpected Output Format: ${agent.expectedOutput}`,
             finalInput,
-            agent.config
+            agent.config,
+            undefined,
+            agentTools
           );
 
           if (!executionRef.current.active) {
-            await finishAndSaveLog(logId, { status: 'stopped', output: output || '' });
+            await finishAndSaveLog(logId, { status: 'stopped', output: response.text || '' });
             break;
           }
 
-          await finishAndSaveLog(logId, { status: 'completed', output });
-          currentOutput = output;
+          // Handle Tool Calls
+          const functionCalls = response.functionCalls;
+          if (functionCalls && functionCalls.length > 0) {
+            const toolResults = [];
+            for (const fc of functionCalls) {
+              try {
+                const result = await executeTool(fc.name, fc.args, agentTools);
+                toolResults.push({ id: fc.id, name: fc.name, response: { result } });
+              } catch (err: any) {
+                toolResults.push({ id: fc.id, name: fc.name, response: { error: err.message } });
+              }
+            }
+            
+            // Log tool interaction
+            await finishAndSaveLog(logId, { toolCalls: functionCalls });
+
+            // Re-generate with tool responses
+            const aiInstance = new (window as any).GoogleGenAI({ apiKey: process.env.API_KEY });
+            const finalResponse = await aiInstance.models.generateContent({
+              model: agent.config.model,
+              contents: [
+                { role: 'user', parts: [{ text: finalInput }] },
+                { role: 'model', parts: functionCalls.map(fc => ({ functionCall: fc })) },
+                { role: 'user', parts: toolResults.map(tr => ({ functionResponse: tr })) }
+              ]
+            });
+            
+            const output = finalResponse.text || "Processed tool results.";
+            await finishAndSaveLog(logId, { status: 'completed', output });
+            currentOutput = output;
+          } else {
+            const output = response.text || "No response received.";
+            await finishAndSaveLog(logId, { status: 'completed', output });
+            currentOutput = output;
+          }
 
           if (workflow.metadata.useManager) {
             const managerResponse = await geminiService.routeNextStep(
@@ -243,7 +295,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
               JSON.stringify(workflow.nodes),
               JSON.stringify(workflow.edges),
               logsRef.current.map(l => `${l.agentName}: ${l.output}`).join('\n'),
-              output
+              currentOutput
             );
 
             if (!executionRef.current.active) break;
@@ -314,7 +366,6 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
   };
 
   const activeLog = logs.find(l => l.id === activeLogId);
-  const activeExecution = executions.find(ex => ex.id === activeExecutionId);
 
   return (
     <div className="h-full flex flex-col bg-[#09090b]">
@@ -402,7 +453,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
             </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center opacity-30 text-center py-10 px-4">
-              <GitBranch className="w-10 h-10 mb-4 text-zinc-600" />
+              <History className="w-10 h-10 mb-4 text-zinc-600" />
               <p className="text-xs font-medium text-zinc-500 uppercase tracking-widest">Select a workflow to configure inputs</p>
             </div>
           )}
@@ -420,10 +471,6 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-9 pr-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
-              <input 
-                type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs outline-none text-zinc-400"
-              />
            </div>
            <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin">
               {filteredExecutions.map(ex => (
@@ -436,24 +483,14 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                 >
                   <div className="flex justify-between items-start mb-2">
                     <span className="text-[11px] font-bold text-zinc-200 truncate pr-2">{ex.workflow_name}</span>
-                    {ex.status === 'running' ? <Loader2 className="w-3 h-3 text-indigo-400 animate-spin" /> : (
-                      <div className={`w-2 h-2 rounded-full ${
-                        ex.status === 'completed' ? 'bg-emerald-500' : 
-                        ex.status === 'stopped' ? 'bg-amber-500' : 'bg-red-500'
-                      }`} />
-                    )}
+                    <div className={`w-2 h-2 rounded-full ${
+                      ex.status === 'completed' ? 'bg-emerald-500' : 
+                      ex.status === 'stopped' ? 'bg-amber-500' : 
+                      ex.status === 'running' ? 'bg-indigo-500 animate-pulse' : 'bg-red-500'
+                    }`} />
                   </div>
                   <div className="flex items-center justify-between text-[9px] text-zinc-500">
                     <div className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" /> {new Date(ex.timestamp).toLocaleTimeString()}</div>
-                    <div className="flex items-center gap-1 uppercase font-bold tracking-tighter">
-                      <span className={
-                        ex.status === 'completed' ? 'text-emerald-500' : 
-                        ex.status === 'stopped' ? 'text-amber-500' : 
-                        ex.status === 'failed' ? 'text-red-500' : 'text-indigo-400'
-                      }>
-                        {ex.status}
-                      </span>
-                    </div>
                   </div>
                 </button>
               ))}
@@ -464,7 +501,6 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
            {activeExecutionId ? (
              <div className="flex-1 flex flex-col overflow-y-auto scrollbar-thin p-8">
                 <div className="max-w-4xl mx-auto w-full space-y-8">
-                    {/* Consolidated Log Section */}
                     <section className="space-y-4">
                        <div className="flex items-center justify-between">
                          <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
@@ -481,14 +517,9 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                        </div>
                        
                        {isLogExpanded && (
-                         <div className="bg-[#0c0c0e] border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/5 font-mono text-[11px] font-mono leading-relaxed animate-in slide-in-from-top-2 duration-300">
+                         <div className="bg-[#0c0c0e] border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/5 font-mono text-[11px] leading-relaxed animate-in slide-in-from-top-2 duration-300">
                             <div className="bg-zinc-900 px-4 py-2 border-b border-zinc-800 flex items-center justify-between">
                               <span className="text-zinc-500">execution-stream --run-id {activeExecutionId.slice(0,8)}</span>
-                              <div className="flex gap-1.5">
-                                <div className="w-2.5 h-2.5 rounded-full bg-red-900/50" />
-                                <div className="w-2.5 h-2.5 rounded-full bg-amber-900/50" />
-                                <div className="w-2.5 h-2.5 rounded-full bg-emerald-900/50" />
-                              </div>
                             </div>
                             <div className="p-4 space-y-4 min-h-[200px] max-h-[600px] overflow-y-auto scrollbar-thin">
                               {logs.map((log) => (
@@ -517,10 +548,13 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                                             {log.status === 'running' ? 'Thinking...' : log.output?.slice(0, 150) + (log.output && log.output.length > 150 ? '...' : '')}
                                           </span>
                                         </div>
-                                        {(log.status !== 'running') && (
-                                          <div className="pl-4 border-l border-zinc-800/50 space-y-1">
-                                            <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Reasoning & Input</div>
-                                            <div className="text-zinc-600 text-[10px] whitespace-pre-wrap italic line-clamp-3 hover:line-clamp-none transition-all">{log.input}</div>
+                                        {log.toolCalls && log.toolCalls.length > 0 && (
+                                          <div className="pl-4 flex flex-col gap-1 border-l border-amber-900/30">
+                                            {log.toolCalls.map((tc: any, i: number) => (
+                                              <div key={i} className="text-[10px] text-amber-500 font-bold flex items-center gap-1">
+                                                <Hammer className="w-3 h-3" /> Tool Call: {tc.name} ({JSON.stringify(tc.args)})
+                                              </div>
+                                            ))}
                                           </div>
                                         )}
                                         {log.error && <div className="text-red-500 font-bold text-[10px] mt-1">ERROR: {log.error}</div>}
@@ -536,65 +570,31 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                     </section>
 
                     <section className="space-y-4 pb-20">
-                       <div className="flex items-center justify-between">
-                         <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                           <Layers className="w-4 h-4" /> Agent Traces
-                         </h3>
-                         {logs.some(l => l.status === 'stopped') && (
-                           <div className="flex items-center gap-2 px-3 py-1 bg-amber-900/10 border border-amber-900/20 rounded-full text-[10px] font-bold text-amber-500 uppercase tracking-tight">
-                             <Square className="w-2.5 h-2.5 fill-current" /> Partial Run - Execution Halted
-                           </div>
-                         )}
-                       </div>
-                       
+                       <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                         <Layers className="w-4 h-4" /> Agent Traces
+                       </h3>
                        <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-thin">
                           {logs.filter(l => l.nodeId !== 'manager' && l.nodeId !== 'system').map(log => (
                             <button
                               key={log.id}
                               onClick={() => setActiveLogId(log.id)}
                               className={`shrink-0 flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all ${
-                                activeLogId === log.id ? 'bg-indigo-600 border-indigo-500 shadow-lg shadow-indigo-600/20 text-white' : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                                activeLogId === log.id ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                               }`}
                             >
                               <div className={`w-2 h-2 rounded-full ${
                                 log.status === 'completed' ? 'bg-emerald-400' : 
                                 log.status === 'failed' ? 'bg-red-400' : 
-                                log.status === 'stopped' ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]' : 
-                                'bg-indigo-400 animate-pulse'
+                                log.status === 'stopped' ? 'bg-amber-400' : 'bg-indigo-400 animate-pulse'
                               }`} />
-                              <span className="text-[11px] font-bold uppercase tracking-wider">{log.agentName} <span className="opacity-60 text-[9px]">V{log.version}</span></span>
+                              <span className="text-[11px] font-bold uppercase tracking-wider">{log.agentName}</span>
                             </button>
                           ))}
                        </div>
 
                        {activeLog && activeLog.nodeId !== 'manager' && activeLog.nodeId !== 'system' && (
                          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-6">
-                            <div className="grid grid-cols-2 gap-6">
-                              <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4 flex flex-col h-full">
-                                <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2 flex justify-between">
-                                  Trace Input <button onClick={() => navigator.clipboard.writeText(activeLog.input)}><Clipboard className="w-3 h-3 hover:text-indigo-400" /></button>
-                                </h4>
-                                <div className="text-[10px] text-zinc-500 mono whitespace-pre-wrap max-h-48 overflow-y-auto scrollbar-thin flex-1">{activeLog.input}</div>
-                              </div>
-                              <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4 h-full">
-                                <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Metadata</h4>
-                                <div className="space-y-2">
-                                  <div className="flex justify-between text-[10px]"><span className="text-zinc-600 uppercase">Agent Version</span><span className="text-indigo-400 font-bold">V{activeLog.version}</span></div>
-                                  <div className="flex justify-between text-[10px]"><span className="text-zinc-600 uppercase">Status</span><span className={
-                                    activeLog.status === 'completed' ? 'text-emerald-500' : 
-                                    activeLog.status === 'failed' ? 'text-red-500' : 
-                                    activeLog.status === 'stopped' ? 'text-amber-500 font-bold' : 
-                                    'text-indigo-400'
-                                  }>{activeLog.status.toUpperCase()}</span></div>
-                                  <div className="flex justify-between text-[10px]"><span className="text-zinc-600 uppercase">Timestamp</span><span className="text-zinc-400">{new Date(activeLog.timestamp).toLocaleTimeString()}</span></div>
-                                </div>
-                              </div>
-                            </div>
                             <div className="p-8 bg-[#0c0c0e] border border-zinc-800 rounded-2xl shadow-2xl relative group min-h-[300px]">
-                               <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                                  <button onClick={() => handleDownload(activeLog.output || '', `output-${activeLog.agentName}-v${activeLog.version}.txt`)} className="p-2 bg-zinc-800 rounded-lg text-zinc-400 hover:text-white" title="Download Output"><Download className="w-4 h-4" /></button>
-                                  <button onClick={() => navigator.clipboard.writeText(activeLog.output || '')} className="p-2 bg-zinc-800 rounded-lg text-zinc-400 hover:text-white" title="Copy Output"><Clipboard className="w-4 h-4" /></button>
-                               </div>
                                <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-6 flex items-center gap-2"><FileText className="w-3.5 h-3.5" /> Agent Output</div>
                                
                                {activeLog.status === 'running' ? (
@@ -602,28 +602,9 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                                    <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
                                    <p className="text-sm font-medium italic animate-pulse">Engaging neural weights...</p>
                                  </div>
-                               ) : activeLog.status === 'stopped' ? (
-                                 <div className="space-y-8">
-                                    {activeLog.output && (
-                                      <div className="prose prose-sm prose-invert max-w-none opacity-80 border-b border-zinc-800 pb-8">
-                                        <Markdown>{activeLog.output}</Markdown>
-                                      </div>
-                                    )}
-                                    <div className="flex flex-col items-center py-12 text-center bg-amber-900/5 rounded-xl border border-dashed border-amber-900/20">
-                                      <AlertCircle className="w-10 h-10 text-amber-600 mb-4" />
-                                      <h4 className="text-amber-500 font-bold uppercase tracking-widest text-xs">Workflow execution has been stopped.</h4>
-                                      <p className="text-zinc-500 text-[10px] mt-1 italic">Manual intervention triggered. Further generation suspended.</p>
-                                    </div>
-                                 </div>
                                ) : (
                                  <div className="prose prose-sm prose-invert max-w-none">
-                                    {activeLog.error ? (
-                                      <div className="text-red-500 font-bold flex items-center gap-2 bg-red-900/10 p-4 rounded-lg border border-red-900/30">
-                                        <AlertCircle className="w-5 h-5" /> EXCEPTION: {activeLog.error}
-                                      </div>
-                                    ) : (
-                                      <Markdown>{activeLog.output || 'No output captured.'}</Markdown>
-                                    )}
+                                    <Markdown>{activeLog.output || 'No output captured.'}</Markdown>
                                  </div>
                                )}
                             </div>
@@ -636,7 +617,6 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
              <div className="flex-1 flex flex-col items-center justify-center opacity-20 select-none grayscale">
                 <Terminal className="w-24 h-24 mb-6 text-zinc-800" />
                 <h3 className="text-2xl font-bold uppercase tracking-widest text-zinc-700">Ready for Launch</h3>
-                <p className="text-sm text-zinc-800 font-medium">Select an execution from history or trigger a new run</p>
              </div>
            )}
         </div>
@@ -644,4 +624,3 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
     </div>
   );
 };
-const GitBranch = (props: any) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-git-branch"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>;

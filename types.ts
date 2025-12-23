@@ -16,6 +16,16 @@ export interface AgentInput {
   parameter: string;
 }
 
+export interface Tool {
+  id: string;
+  name: string;
+  description: string;
+  className: string;
+  code: string;
+  language: 'javascript' | 'python' | 'java';
+  parameters: any; // JSON Schema
+}
+
 export interface AgentConfig {
   aiEngine: string;
   model: string;
@@ -38,6 +48,7 @@ export interface Agent {
   inputs: AgentInput[];
   expectedOutput: string;
   config: AgentConfig;
+  toolIds?: string[];
 }
 
 export interface WorkflowMetadata {
@@ -80,6 +91,7 @@ export interface ExecutionLog {
   error?: string;
   nodeId: string;
   version?: number;
+  toolCalls?: any[];
 }
 
 export interface WorkflowExecution {

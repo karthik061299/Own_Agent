@@ -1,10 +1,10 @@
 
 import React from 'react';
-import { Users, GitBranch, Play, Settings, Cpu, PanelLeftClose } from 'lucide-react';
+import { Users, GitBranch, Play, Settings, Cpu, PanelLeftClose, Hammer } from 'lucide-react';
 
 interface SidebarProps {
-  activeTab: 'agents' | 'workflows' | 'execution';
-  onTabChange: (tab: 'agents' | 'workflows' | 'execution') => void;
+  activeTab: 'agents' | 'workflows' | 'execution' | 'tools';
+  onTabChange: (tab: 'agents' | 'workflows' | 'execution' | 'tools') => void;
   isCollapsed: boolean;
   setIsCollapsed: (collapsed: boolean) => void;
 }
@@ -13,6 +13,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, isColl
   const menuItems = [
     { id: 'agents', label: 'Agents', icon: Users },
     { id: 'workflows', label: 'Workflows', icon: GitBranch },
+    { id: 'tools', label: 'Tools', icon: Hammer },
     { id: 'execution', label: 'Execution', icon: Play },
   ] as const;
 

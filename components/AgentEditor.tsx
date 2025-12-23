@@ -1,11 +1,12 @@
 
-import React, { useState, useEffect } from 'react';
-import { Agent, AgentInput, DBModel } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Agent, AgentInput, DBModel, Tool } from '../types';
 import { dbService } from '../services/db';
-import { Save, X, Settings2, Sparkles, MessageSquare, Fingerprint, Hammer, Plus, Trash2, Cpu, ChevronDown } from 'lucide-react';
+import { Save, X, Settings2, Sparkles, MessageSquare, Fingerprint, Hammer, Plus, Trash2, Cpu, ChevronDown, Check, Search, Filter } from 'lucide-react';
 
 interface AgentEditorProps {
   agent: Agent;
+  tools: Tool[];
   onSave: (agent: Agent) => void;
   onCancel: () => void;
 }
@@ -48,12 +49,16 @@ const SliderInput: React.FC<{
   );
 };
 
-export const AgentEditor: React.FC<AgentEditorProps> = ({ agent, onSave, onCancel }) => {
-  const [formData, setFormData] = useState<Agent>({ ...agent });
+export const AgentEditor: React.FC<AgentEditorProps> = ({ agent, tools, onSave, onCancel }) => {
+  const [formData, setFormData] = useState<Agent>({ ...agent, toolIds: agent.toolIds || [] });
   const [activeTab, setActiveTab] = useState<'metadata' | 'prompt' | 'config' | 'tools'>('metadata');
   const [domains, setDomains] = useState<string[]>([]);
   const [engines, setEngines] = useState<{id: number, name: string}[]>([]);
   const [models, setModels] = useState<DBModel[]>([]);
+
+  // Tool filtering state
+  const [toolSearch, setToolSearch] = useState('');
+  const [toolLanguageFilter, setToolLanguageFilter] = useState<string>('all');
 
   useEffect(() => {
     const loadLookups = async () => {
@@ -105,6 +110,16 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({ agent, onSave, onCance
     });
   };
 
+  const toggleTool = (id: string) => {
+    setFormData(prev => {
+      const toolIds = prev.toolIds || [];
+      const newToolIds = toolIds.includes(id) 
+        ? toolIds.filter(tid => tid !== id)
+        : [...toolIds, id];
+      return { ...prev, toolIds: newToolIds };
+    });
+  };
+
   const isFormValid = () => {
     const { name, description, role, domain, goal, backstory, taskDescription, expectedOutput } = formData;
     return !!(name && description && role && domain && goal && backstory && taskDescription && expectedOutput);
@@ -122,6 +137,15 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({ agent, onSave, onCance
     const engine = engines.find(e => e.name === formData.config.aiEngine);
     return engine && m.engine_id === engine.id;
   });
+
+  const filteredTools = useMemo(() => {
+    return tools.filter(tool => {
+      const matchesSearch = tool.name.toLowerCase().includes(toolSearch.toLowerCase()) || 
+                          tool.description.toLowerCase().includes(toolSearch.toLowerCase());
+      const matchesLanguage = toolLanguageFilter === 'all' || tool.language === toolLanguageFilter;
+      return matchesSearch && matchesLanguage;
+    });
+  }, [tools, toolSearch, toolLanguageFilter]);
 
   return (
     <div className="h-full flex flex-col bg-[#09090b]">
@@ -407,12 +431,80 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({ agent, onSave, onCance
           )}
 
           {activeTab === 'tools' && (
-            <div className="flex flex-col items-center justify-center py-20 text-center opacity-50 grayscale">
-              <Hammer className="w-16 h-16 text-zinc-700 mb-4" />
-              <h3 className="text-xl font-bold text-zinc-300">Tools are coming soon</h3>
-              <p className="text-zinc-500 max-w-sm mt-2">
-                External tools like web search, code execution, and database connectors are in active development.
-              </p>
+            <div className="space-y-6 animate-in fade-in duration-300">
+               {/* Search and Filter for Tools */}
+               <div className="flex gap-4 items-end bg-zinc-900/40 p-4 rounded-xl border border-zinc-800 mb-6">
+                 <div className="flex-1 space-y-2">
+                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest pl-1">Search Tools</label>
+                   <div className="relative">
+                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                     <input 
+                       type="text" 
+                       value={toolSearch}
+                       onChange={(e) => setToolSearch(e.target.value)}
+                       placeholder="Filter tools by name or description..."
+                       className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-10 pr-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
+                     />
+                   </div>
+                 </div>
+                 <div className="w-48 space-y-2">
+                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest pl-1">Language</label>
+                   <div className="relative">
+                     <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
+                     <select 
+                       value={toolLanguageFilter}
+                       onChange={(e) => setToolLanguageFilter(e.target.value)}
+                       className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none appearance-none"
+                     >
+                       <option value="all">All Languages</option>
+                       <option value="javascript">JavaScript</option>
+                       <option value="python">Python</option>
+                       <option value="java">Java</option>
+                     </select>
+                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+                   </div>
+                 </div>
+               </div>
+
+               <div className="grid grid-cols-2 gap-4">
+                 {filteredTools.map(tool => (
+                   <button
+                    key={tool.id}
+                    onClick={() => toggleTool(tool.id)}
+                    className={`p-4 rounded-xl border text-left transition-all relative overflow-hidden group ${
+                      formData.toolIds?.includes(tool.id) 
+                        ? 'bg-indigo-600/10 border-indigo-600/40 shadow-lg shadow-indigo-600/5' 
+                        : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
+                    }`}
+                   >
+                     {formData.toolIds?.includes(tool.id) && (
+                       <div className="absolute top-2 right-2 w-5 h-5 bg-indigo-600 rounded-full flex items-center justify-center animate-in zoom-in duration-200">
+                         <Check className="w-3 h-3 text-white" />
+                       </div>
+                     )}
+                     <h4 className="font-bold text-sm text-zinc-100 mb-1">{tool.name}</h4>
+                     <p className="text-[10px] text-zinc-500 line-clamp-2 leading-relaxed mb-3">{tool.description}</p>
+                     <div className="mt-auto flex items-center gap-2">
+                       <span className="text-[9px] font-mono text-indigo-400 bg-indigo-900/20 px-1.5 py-0.5 rounded border border-indigo-900/30">
+                         {tool.className}
+                       </span>
+                       <span className={`text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded border ${
+                         tool.language === 'javascript' ? 'text-amber-500 border-amber-500/20 bg-amber-500/5' :
+                         tool.language === 'python' ? 'text-blue-500 border-blue-500/20 bg-blue-500/5' :
+                         'text-red-500 border-red-500/20 bg-red-500/5'
+                       }`}>
+                         {tool.language}
+                       </span>
+                     </div>
+                   </button>
+                 ))}
+                 {filteredTools.length === 0 && (
+                   <div className="col-span-2 py-20 text-center opacity-40 border-2 border-dashed border-zinc-800 rounded-2xl">
+                     <Hammer className="w-10 h-10 mx-auto mb-4" />
+                     <p className="text-sm">No tools found matching your criteria.</p>
+                   </div>
+                 )}
+               </div>
             </div>
           )}
         </div>

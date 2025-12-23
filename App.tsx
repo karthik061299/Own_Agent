@@ -6,29 +6,35 @@ import { AgentEditor } from './components/AgentEditor';
 import { WorkflowList } from './components/WorkflowList';
 import { WorkflowEditor } from './components/WorkflowEditor';
 import { ExecutionPanel } from './components/ExecutionPanel';
-import { Agent, Workflow } from './types';
+import { ToolsList } from './components/ToolsList';
+import { ToolEditor } from './components/ToolEditor';
+import { Agent, Workflow, Tool } from './types';
 import { dbService } from './services/db';
-import { Settings, Users, GitBranch, Play, Loader2, PanelRight } from 'lucide-react';
+import { Settings, Users, GitBranch, Play, Loader2, PanelRight, Hammer } from 'lucide-react';
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'agents' | 'workflows' | 'execution'>('agents');
+  const [activeTab, setActiveTab] = useState<'agents' | 'workflows' | 'execution' | 'tools'>('agents');
   const [agents, setAgents] = useState<Agent[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
+  const [tools, setTools] = useState<Tool[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [editingWorkflow, setEditingWorkflow] = useState<Workflow | null>(null);
+  const [editingTool, setEditingTool] = useState<Tool | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   useEffect(() => {
     const init = async () => {
       try {
         await dbService.initSchema();
-        const [loadedAgents, loadedWorkflows] = await Promise.all([
+        const [loadedAgents, loadedWorkflows, loadedTools] = await Promise.all([
           dbService.getAgents(),
-          dbService.getWorkflows()
+          dbService.getWorkflows(),
+          dbService.getTools()
         ]);
         setAgents(loadedAgents);
         setWorkflows(loadedWorkflows);
+        setTools(loadedTools);
       } catch (e) {
         console.error("Initialization error:", e);
       } finally {
@@ -89,6 +95,31 @@ const App: React.FC = () => {
     }
   };
 
+  const handleSaveTool = async (tool: Tool) => {
+    try {
+      await dbService.saveTool(tool);
+      setTools(prev => {
+        const exists = prev.find(t => t.id === tool.id);
+        if (exists) return prev.map(t => t.id === tool.id ? tool : t);
+        return [tool, ...prev];
+      });
+      setEditingTool(null);
+    } catch (e) {
+      alert("Failed to save tool to database");
+    }
+  };
+
+  const handleDeleteTool = async (id: string) => {
+    if (confirm("Are you sure you want to delete this tool?")) {
+      try {
+        await dbService.deleteTool(id);
+        setTools(prev => prev.filter(t => t.id !== id));
+      } catch (e) {
+        alert("Failed to delete tool");
+      }
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="h-screen w-full bg-[#09090b] flex flex-col items-center justify-center gap-4">
@@ -100,13 +131,13 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen w-full bg-[#09090b] text-zinc-100 overflow-hidden relative">
-      {/* Sidebar strip for expanded/collapsed state */}
       <Sidebar 
         activeTab={activeTab} 
         onTabChange={(tab) => {
           setActiveTab(tab);
           setEditingAgent(null);
           setEditingWorkflow(null);
+          setEditingTool(null);
         }} 
         isCollapsed={isSidebarCollapsed}
         setIsCollapsed={setIsSidebarCollapsed}
@@ -128,6 +159,9 @@ const App: React.FC = () => {
             <button onClick={() => {setActiveTab('workflows'); setEditingWorkflow(null);}} className={`p-2 rounded-lg transition-all ${activeTab === 'workflows' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-600 hover:text-zinc-400'}`}>
               <GitBranch className="w-5 h-5" />
             </button>
+            <button onClick={() => {setActiveTab('tools'); setEditingTool(null);}} className={`p-2 rounded-lg transition-all ${activeTab === 'tools' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-600 hover:text-zinc-400'}`}>
+              <Hammer className="w-5 h-5" />
+            </button>
             <button onClick={() => setActiveTab('execution')} className={`p-2 rounded-lg transition-all ${activeTab === 'execution' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-600 hover:text-zinc-400'}`}>
               <Play className="w-5 h-5" />
             </button>
@@ -140,12 +174,14 @@ const App: React.FC = () => {
           editingAgent ? (
             <AgentEditor 
               agent={editingAgent} 
+              tools={tools}
               onSave={handleSaveAgent} 
               onCancel={() => setEditingAgent(null)} 
             />
           ) : (
             <AgentList 
               agents={agents} 
+              tools={tools}
               onEdit={setEditingAgent} 
               onDelete={handleDeleteAgent}
               onCreate={() => setEditingAgent({
@@ -159,6 +195,7 @@ const App: React.FC = () => {
                 taskDescription: '',
                 inputs: [],
                 expectedOutput: '',
+                toolIds: [],
                 config: {
                   aiEngine: 'GoogleAI',
                   model: 'gemini-3-flash-preview',
@@ -204,8 +241,34 @@ const App: React.FC = () => {
           )
         )}
 
+        {activeTab === 'tools' && (
+          editingTool ? (
+            <ToolEditor 
+              tool={editingTool} 
+              onSave={handleSaveTool} 
+              onCancel={() => setEditingTool(null)} 
+            />
+          ) : (
+            <ToolsList 
+              tools={tools}
+              onEdit={setEditingTool}
+              onDelete={handleDeleteTool}
+              onCreate={() => setEditingTool({
+                id: crypto.randomUUID(),
+                name: '',
+                description: '',
+                className: '',
+                // Fixed: Added language property which was missing and causing a type error.
+                language: 'javascript',
+                parameters: { type: 'OBJECT', properties: {}, required: [] },
+                code: `async (args) => {\n  // Implementation here\n  return 'Success';\n}`
+              })}
+            />
+          )
+        )}
+
         {activeTab === 'execution' && (
-          <ExecutionPanel workflows={workflows} agents={agents} />
+          <ExecutionPanel workflows={workflows} agents={agents} tools={tools} />
         )}
       </main>
     </div>
