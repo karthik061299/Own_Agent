@@ -50,6 +50,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
   const [agentDomainFilter, setAgentDomainFilter] = useState('');
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
   const [connStartNodeId, setConnStartNodeId] = useState<string | null>(null);
+  const [isResetConfirmVisible, setIsResetConfirmVisible] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -73,18 +74,17 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
     }));
   };
 
-  const resetGraph = () => {
-    const confirmed = confirm("Completely reset the workflow graph? This will clear all agents and connections.");
-    if (confirmed) {
-      setFormData(prev => ({ 
-        ...prev, 
-        nodes: [], 
-        edges: [] 
-      }));
-      setConnStartNodeId(null);
-      setDraggingNodeId(null);
-    }
+  const handleConfirmReset = () => {
+    setFormData(prev => ({ 
+      ...prev, 
+      nodes: [], 
+      edges: [] 
+    }));
+    setConnStartNodeId(null);
+    setDraggingNodeId(null);
+    setIsResetConfirmVisible(false);
   };
+
 
   const tryConnect = (sourceId: string, targetId: string) => {
     if (sourceId === targetId) return;
@@ -230,7 +230,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
 
         <div className="flex gap-3">
           <button 
-            onClick={resetGraph} 
+            onClick={() => setIsResetConfirmVisible(true)} 
             className="flex items-center gap-2 px-4 py-2 text-zinc-400 hover:text-red-400 transition-colors text-sm font-medium"
             title="Clear all agents and connections"
           >
@@ -499,6 +499,41 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
             );
           })}
         </div>
+        {isResetConfirmVisible && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-[#0c0c0e] border border-zinc-800 p-8 rounded-3xl max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+              <div className="flex items-center gap-4 text-amber-500 mb-6">
+                <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/20">
+                  <AlertCircle className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-bold text-zinc-100">Reset Graph?</h3>
+              </div>
+              <p className="text-sm text-zinc-400 leading-relaxed mb-8">
+                This will clear all agents and connections from the canvas. This action cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setIsResetConfirmVisible(false)}
+                  className="flex-1 px-4 py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-xl font-bold text-xs transition-all border border-zinc-800"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleConfirmReset}
+                  className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold text-xs transition-all shadow-lg shadow-red-600/20"
+                >
+                  Confirm Reset
+                </button>
+              </div>
+              <button 
+                onClick={() => setIsResetConfirmVisible(false)}
+                className="absolute top-4 right-4 text-zinc-600 hover:text-zinc-300 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

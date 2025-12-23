@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Agent, AgentInput, DBModel, Tool, Engine } from '../types';
 import { dbService } from '../services/db';
@@ -52,7 +53,6 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({ agent, tools, onSave, 
   const [formData, setFormData] = useState<Agent>({ ...agent, toolIds: agent.toolIds || [] });
   const [activeTab, setActiveTab] = useState<'metadata' | 'prompt' | 'config' | 'tools'>('metadata');
   const [domains, setDomains] = useState<string[]>([]);
-  // Fix: Explicitly use Engine interface from types.ts to ensure is_active property is recognized
   const [engines, setEngines] = useState<Engine[]>([]);
   const [models, setModels] = useState<DBModel[]>([]);
 

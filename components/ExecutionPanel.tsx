@@ -7,7 +7,7 @@ import { dbService } from '../services/db';
 import { GoogleGenAI } from "@google/genai";
 import { 
   Play, Terminal, Loader2, History, Zap, Settings, 
-  Search, Clock, Box, Download, ChevronDown, ChevronUp, Layers, FileText, Square, Hammer, AlertCircle, Cpu
+  Search, Clock, Box, Download, ChevronDown, ChevronUp, Layers, FileText, Square, Hammer, AlertCircle, Cpu, Eye, EyeOff
 } from 'lucide-react';
 
 interface ExecutionPanelProps {
@@ -15,6 +15,92 @@ interface ExecutionPanelProps {
   agents: Agent[];
   tools: Tool[];
 }
+
+const LogEntry: React.FC<{ log: ExecutionLog }> = ({ log }) => {
+  const [isHovering, setIsHovering] = useState(false);
+
+  const parseInput = (input: string) => {
+    const contextMatch = input.match(/CONTEXT_CHAIN: ([\s\S]*?)\n\nPARAM_BLOCK:/);
+    const paramsMatch = input.match(/PARAM_BLOCK:([\s\S]*?)\n\nASSIGNED_TASK:/);
+    const taskMatch = input.match(/ASSIGNED_TASK: ([\s\S]*)/);
+    return {
+      context: contextMatch ? contextMatch[1].trim() : 'N/A',
+      params: paramsMatch ? paramsMatch[1].trim() : 'N/A',
+      task: taskMatch ? taskMatch[1].trim() : input
+    };
+  };
+
+  const { context, params, task } = parseInput(log.input);
+
+  return (
+    <div 
+      className="group relative animate-in fade-in slide-in-from-left-2 duration-300 border-b border-zinc-800/40 pb-4 last:border-0 last:pb-0"
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => setIsHovering(false)}
+    >
+      <div className="flex items-start gap-4">
+        <span className="text-zinc-700 shrink-0 font-bold">[{new Date(log.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}]</span>
+        
+        <div className="flex-1 space-y-2">
+          {log.nodeId === 'manager' ? (
+            <div>
+              <span className="text-amber-500 font-bold uppercase tracking-tighter">Manager &gt; </span>
+              <span className="text-amber-100/90 italic">{log.output}</span>
+            </div>
+          ) : log.nodeId === 'system' ? (
+            <div>
+              <span className="text-zinc-500 font-bold uppercase tracking-tighter">System &gt; </span>
+              <span className="text-zinc-400 italic">{log.output}</span>
+            </div>
+          ) : (
+            <>
+              <div>
+                <span className="text-indigo-400 font-bold uppercase tracking-tighter">{log.agentName} (V{log.version}) &gt; </span>
+                <span className={`line-clamp-2 group-hover:line-clamp-none transition-all ${log.status === 'failed' ? 'text-red-400 font-bold' : log.status === 'stopped' ? 'text-amber-500' : 'text-zinc-300'}`}>
+                  {log.status === 'running' ? 'Thinking...' : log.status === 'failed' ? `Error: ${log.error || 'Execution halted'}` : log.output}
+                </span>
+              </div>
+              
+              <div className="max-h-0 overflow-hidden group-hover:max-h-[1000px] transition-all duration-500 ease-in-out">
+                <div className="pt-3 mt-2 border-t border-zinc-800/60 space-y-3">
+                  <div className="text-[10px] space-y-1">
+                    <h5 className="font-bold text-zinc-500 uppercase tracking-widest">Input: Context Chain</h5>
+                    <p className="text-zinc-400 leading-relaxed italic">{context}</p>
+                  </div>
+                   {params.trim() !== 'None' && params.trim() !== '' && (
+                    <div className="text-[10px] space-y-1">
+                      <h5 className="font-bold text-zinc-500 uppercase tracking-widest">Input: Parameters</h5>
+                      <pre className="text-zinc-400 leading-relaxed whitespace-pre-wrap bg-black/20 p-2 rounded-md font-sans">{params}</pre>
+                    </div>
+                  )}
+                  <div className="text-[10px] space-y-1">
+                    <h5 className="font-bold text-zinc-500 uppercase tracking-widest">Input: Assigned Task</h5>
+                    <p className="text-zinc-300 leading-relaxed">{task}</p>
+                  </div>
+                  {log.toolCalls?.map((tc: any, i: number) => (
+                    <div key={i} className="text-[10px] text-amber-500 font-bold flex items-center gap-2">
+                      <Hammer className="w-3 h-3" /> Invoke Tool: {tc.name}
+                    </div>
+                  ))}
+                   <div className="text-[10px] space-y-1 pt-2 border-t border-zinc-800/40">
+                    <h5 className="font-bold text-indigo-400 uppercase tracking-widest">Final Output</h5>
+                    <div className={`leading-relaxed prose prose-sm prose-invert ${log.status === 'failed' ? 'text-red-400' : 'text-zinc-300'}`}>
+                      <Markdown>{log.status === 'failed' ? `**Error:** ${log.error || 'Execution halted'}` : log.output || ''}</Markdown>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+      <div className={`absolute -left-8 top-1 p-1 rounded-full bg-zinc-800 border border-zinc-700 transition-all duration-200 opacity-0 group-hover:opacity-100`}>
+        {isHovering ? <Eye className="w-3 h-3 text-indigo-400" /> : <EyeOff className="w-3 h-3 text-zinc-500" />}
+      </div>
+    </div>
+  );
+};
+
 
 export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agents, tools }) => {
   const [workflowSearch, setWorkflowSearch] = useState('');
@@ -575,38 +661,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                               {isExecuting && <span className="flex items-center gap-2 text-indigo-500 text-[9px] font-bold uppercase animate-pulse"><div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-ping" /> Synchronizing</span>}
                             </div>
                             <div className="p-6 space-y-4 min-h-[150px] max-h-[500px] overflow-y-auto scrollbar-thin">
-                              {logs.map((log) => (
-                                <div key={log.id} className="animate-in fade-in slide-in-from-left-2 duration-300 border-b border-zinc-800/40 pb-4 last:border-0 last:pb-0">
-                                  <div className="flex items-start gap-4">
-                                    <span className="text-zinc-700 shrink-0 font-bold">[{new Date(log.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}]</span>
-                                    {log.nodeId === 'manager' ? (
-                                      <div className="flex-1">
-                                        <span className="text-amber-500 font-bold uppercase tracking-tighter">Manager &gt; </span>
-                                        <span className="text-amber-100/90 italic">{log.output}</span>
-                                      </div>
-                                    ) : log.nodeId === 'system' ? (
-                                      <div className="flex-1">
-                                        <span className="text-zinc-500 font-bold uppercase tracking-tighter">System &gt; </span>
-                                        <span className="text-zinc-400 italic">{log.output}</span>
-                                      </div>
-                                    ) : (
-                                      <div className="flex-1 space-y-2">
-                                        <div>
-                                          <span className="text-indigo-400 font-bold uppercase tracking-tighter">{log.agentName} (V{log.version}) &gt; </span>
-                                          <span className={log.status === 'failed' ? 'text-red-400 font-bold' : log.status === 'stopped' ? 'text-amber-500' : 'text-zinc-300'}>
-                                            {log.status === 'running' ? 'Thinking...' : log.status === 'failed' ? `Error: ${log.error || 'Execution halted'}` : log.output}
-                                          </span>
-                                        </div>
-                                        {log.toolCalls?.map((tc: any, i: number) => (
-                                          <div key={i} className="text-[10px] text-amber-500 font-bold flex items-center gap-2 pl-4 border-l-2 border-amber-900/40 ml-1">
-                                            <Hammer className="w-3 h-3" /> Invoke Tool: {tc.name}
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
+                              {logs.map((log) => <LogEntry key={log.id} log={log} />)}
                               {isExecuting && <div className="flex items-center gap-3 text-indigo-400 text-[10px] font-bold uppercase tracking-widest pl-2">
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                 Processing next instruction...
@@ -637,7 +692,7 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                                 log.status === 'failed' ? 'bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.5)]' : 
                                 log.status === 'stopped' ? 'bg-amber-400' : 'bg-indigo-400 animate-pulse'
                               }`} />
-                              <span className="text-[11px] font-bold uppercase tracking-wider">{log.agentName}</span>
+                              <span className="text-[11px] font-bold uppercase tracking-wider">{log.agentName} (V{log.version})</span>
                             </button>
                           ))}
                        </div>
@@ -646,7 +701,11 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
                          <div className="animate-in fade-in slide-in-from-bottom-3 duration-400 space-y-6">
                             <div className="p-10 bg-[#0c0c0e] border border-zinc-800 rounded-3xl shadow-2xl relative group min-h-[400px]">
                                <div className="text-[11px] font-bold text-zinc-500 uppercase tracking-[0.2em] mb-8 flex items-center justify-between">
-                                  <div className="flex items-center gap-3"><FileText className="w-4 h-4" /> Agent Trace Output</div>
+                                  <div className="flex items-center gap-3">
+                                    <FileText className="w-4 h-4" />
+                                    <span>Agent Trace: {activeLog.agentName}</span>
+                                    <span className="text-[9px] font-mono text-zinc-600 bg-zinc-900 px-1.5 py-0.5 rounded-md border border-zinc-800">V{activeLog.version}</span>
+                                  </div>
                                   <div className={`px-3 py-1 rounded-lg border text-[10px] font-bold uppercase ${
                                       activeLog.status === 'failed' ? 'bg-red-900/10 border-red-500 text-red-400 shadow-lg shadow-red-900/20' :
                                       activeLog.status === 'completed' ? 'bg-emerald-900/10 border-emerald-500 text-emerald-400' :

@@ -12,7 +12,7 @@ import { ChatInterface } from './components/ChatInterface';
 import { SettingsView } from './components/SettingsView';
 import { Agent, Workflow, Tool } from './types';
 import { dbService } from './services/db';
-import { Settings, Users, GitBranch, Play, Loader2, PanelRight, Hammer, MessageSquare } from 'lucide-react';
+import { Settings, Users, GitBranch, Play, Loader2, PanelRight, Hammer, MessageSquare, AlertCircle, X } from 'lucide-react';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'agents' | 'workflows' | 'execution' | 'tools' | 'chat' | 'settings'>('agents');
@@ -24,6 +24,7 @@ const App: React.FC = () => {
   const [editingWorkflow, setEditingWorkflow] = useState<Workflow | null>(null);
   const [editingTool, setEditingTool] = useState<Tool | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
+  const [deletionTarget, setDeletionTarget] = useState<{ type: 'agent' | 'workflow' | 'tool', id: string, name: string } | null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -61,14 +62,10 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDeleteAgent = async (id: string) => {
-    if (confirm("Are you sure you want to delete this agent? This action is permanent in the database.")) {
-      try {
-        await dbService.deleteAgent(id);
-        setAgents(prev => prev.filter(a => a.id !== id));
-      } catch (e) {
-        alert("Failed to delete agent");
-      }
+  const handleDeleteAgent = (id: string) => {
+    const agent = agents.find(a => a.id === id);
+    if (agent) {
+      setDeletionTarget({ type: 'agent', id, name: agent.name });
     }
   };
 
@@ -86,14 +83,10 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDeleteWorkflow = async (id: string) => {
-    if (confirm("Are you sure you want to delete this workflow?")) {
-      try {
-        await dbService.deleteWorkflow(id);
-        setWorkflows(prev => prev.filter(w => w.metadata.id !== id));
-      } catch (e) {
-        alert("Failed to delete workflow");
-      }
+  const handleDeleteWorkflow = (id: string) => {
+    const workflow = workflows.find(w => w.metadata.id === id);
+    if (workflow) {
+      setDeletionTarget({ type: 'workflow', id, name: workflow.metadata.name });
     }
   };
 
@@ -111,16 +104,34 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDeleteTool = async (id: string) => {
-    if (confirm("Are you sure you want to delete this tool?")) {
-      try {
-        await dbService.deleteTool(id);
-        setTools(prev => prev.filter(t => t.id !== id));
-      } catch (e) {
-        alert("Failed to delete tool");
-      }
+  const handleDeleteTool = (id: string) => {
+    const tool = tools.find(t => t.id === id);
+    if (tool) {
+      setDeletionTarget({ type: 'tool', id, name: tool.name });
     }
   };
+
+  const handleConfirmDelete = async () => {
+    if (!deletionTarget) return;
+    const { type, id } = deletionTarget;
+    try {
+      if (type === 'agent') {
+        await dbService.deleteAgent(id);
+        setAgents(prev => prev.filter(a => a.id !== id));
+      } else if (type === 'workflow') {
+        await dbService.deleteWorkflow(id);
+        setWorkflows(prev => prev.filter(w => w.metadata.id !== id));
+      } else if (type === 'tool') {
+        await dbService.deleteTool(id);
+        setTools(prev => prev.filter(t => t.id !== id));
+      }
+    } catch (e) {
+      alert(`Failed to delete ${type}`);
+    } finally {
+      setDeletionTarget(null);
+    }
+  };
+
 
   if (isLoading) {
     return (
@@ -286,6 +297,43 @@ const App: React.FC = () => {
           <SettingsView />
         )}
       </main>
+
+      {/* Deletion Confirmation Modal */}
+      {deletionTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#0c0c0e] border border-zinc-800 p-8 rounded-3xl max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-4 text-amber-500 mb-6">
+              <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/20">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-zinc-100">Confirm Deletion</h3>
+            </div>
+            <p className="text-sm text-zinc-400 leading-relaxed mb-8">
+              Are you sure you want to permanently delete the {deletionTarget.type} <strong className="text-indigo-400">"{deletionTarget.name}"</strong>? This action cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setDeletionTarget(null)}
+                className="flex-1 px-4 py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-xl font-bold text-xs transition-all border border-zinc-800"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleConfirmDelete}
+                className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold text-xs transition-all shadow-lg shadow-red-600/20"
+              >
+                Delete
+              </button>
+            </div>
+            <button 
+              onClick={() => setDeletionTarget(null)}
+              className="absolute top-4 right-4 text-zinc-600 hover:text-zinc-300 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
