@@ -42,50 +42,64 @@ const LogEntry: React.FC<{ log: ExecutionLog }> = ({ log }) => {
         <span className="text-zinc-700 shrink-0 font-bold">[{new Date(log.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}]</span>
         
         <div className="flex-1 space-y-2">
-          {log.nodeId === 'manager' ? (
-            <div>
-              <span className="text-amber-500 font-bold uppercase tracking-tighter">Manager &gt; </span>
-              <span className="text-amber-100/90 italic">{log.output}</span>
-            </div>
-          ) : log.nodeId === 'system' ? (
-            <div>
-              <span className="text-zinc-500 font-bold uppercase tracking-tighter">System &gt; </span>
-              <span className="text-zinc-400 italic">{log.output}</span>
+          {log.nodeId === 'manager' || log.nodeId === 'system' ? (
+             <div>
+              <span className={`${log.nodeId === 'manager' ? 'text-amber-500' : 'text-zinc-500'} font-bold uppercase tracking-tighter`}>{log.agentName} &gt; </span>
+              <span className={`${log.nodeId === 'manager' ? 'text-amber-100/90' : 'text-zinc-400'} italic`}>{log.output}</span>
             </div>
           ) : (
             <>
+              {/* Summary View */}
               <div>
                 <span className="text-indigo-400 font-bold uppercase tracking-tighter">{log.agentName} (V{log.version}) &gt; </span>
-                <span className={`line-clamp-2 group-hover:line-clamp-none transition-all ${log.status === 'failed' ? 'text-red-400 font-bold' : log.status === 'stopped' ? 'text-amber-500' : 'text-zinc-300'}`}>
-                  {log.status === 'running' ? 'Thinking...' : log.status === 'failed' ? `Error: ${log.error || 'Execution halted'}` : log.output}
+                <span className="text-zinc-500 italic">
+                    {
+                        log.status === 'running' ? 'Executing task...' :
+                        log.status === 'completed' ? `Completed. Output: ${(log.output || '').substring(0, 80)}...` :
+                        log.status === 'failed' ? `Failed. Error: ${(log.error || '').substring(0, 80)}...` :
+                        log.status === 'stopped' ? 'Stopped by user.' : 'Pending.'
+                    }
                 </span>
               </div>
               
-              <div className="max-h-0 overflow-hidden group-hover:max-h-[1000px] transition-all duration-500 ease-in-out">
-                <div className="pt-3 mt-2 border-t border-zinc-800/60 space-y-3">
+              {/* Expanded View */}
+              <div className="max-h-0 overflow-hidden group-hover:max-h-none transition-all duration-500 ease-in-out">
+                <div className="pt-3 mt-2 border-t border-zinc-800/60 space-y-4">
+                  
+                  {/* Correct Order: Context -> Params -> Task -> Tools -> Output */}
                   <div className="text-[10px] space-y-1">
                     <h5 className="font-bold text-zinc-500 uppercase tracking-widest">Input: Context Chain</h5>
-                    <p className="text-zinc-400 leading-relaxed italic">{context}</p>
+                    <div className="prose prose-sm prose-invert italic text-zinc-400 p-2 bg-black/20 rounded-md">
+                      <Markdown>{context}</Markdown>
+                    </div>
                   </div>
-                   {params.trim() !== 'None' && params.trim() !== '' && (
+                   
+                  {params.trim() !== 'None' && params.trim() !== '' && (
                     <div className="text-[10px] space-y-1">
-                      <h5 className="font-bold text-zinc-500 uppercase tracking-widest">Input: Parameters</h5>
-                      <pre className="text-zinc-400 leading-relaxed whitespace-pre-wrap bg-black/20 p-2 rounded-md font-sans">{params}</pre>
+                      <h5 className="font-bold text-zinc-500 uppercase tracking-widest">Input: Workflow Parameters</h5>
+                      <div className="prose prose-sm prose-invert">
+                        <Markdown>{'```\n' + params + '\n```'}</Markdown>
+                      </div>
                     </div>
                   )}
+
                   <div className="text-[10px] space-y-1">
                     <h5 className="font-bold text-zinc-500 uppercase tracking-widest">Input: Assigned Task</h5>
-                    <p className="text-zinc-300 leading-relaxed">{task}</p>
+                    <div className="prose prose-sm prose-invert text-zinc-300 p-2 bg-black/20 rounded-md">
+                      <Markdown>{task}</Markdown>
+                    </div>
                   </div>
+                  
                   {log.toolCalls?.map((tc: any, i: number) => (
                     <div key={i} className="text-[10px] text-amber-500 font-bold flex items-center gap-2">
                       <Hammer className="w-3 h-3" /> Invoke Tool: {tc.name}
                     </div>
                   ))}
-                   <div className="text-[10px] space-y-1 pt-2 border-t border-zinc-800/40">
+
+                   <div className="text-[10px] space-y-1 pt-3 border-t border-zinc-800/40">
                     <h5 className="font-bold text-indigo-400 uppercase tracking-widest">Final Output</h5>
-                    <div className={`leading-relaxed prose prose-sm prose-invert ${log.status === 'failed' ? 'text-red-400' : 'text-zinc-300'}`}>
-                      <Markdown>{log.status === 'failed' ? `**Error:** ${log.error || 'Execution halted'}` : log.output || ''}</Markdown>
+                    <div className={`prose prose-sm prose-invert ${log.status === 'failed' ? 'text-red-400' : 'text-zinc-300'}`}>
+                      <Markdown>{log.status === 'failed' ? `**Error:** ${log.error || 'Execution halted'}` : log.output || '*(No text output)*'}</Markdown>
                     </div>
                   </div>
                 </div>
