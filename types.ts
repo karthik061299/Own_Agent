@@ -100,6 +100,7 @@ export interface WorkflowExecution {
   workflow_name: string;
   status: 'running' | 'completed' | 'failed' | 'stopped';
   timestamp: number;
+  duration?: number;
 }
 
 export interface DBModel {
@@ -108,4 +109,19 @@ export interface DBModel {
   name: string;
   full_name: string;
   max_tokens: number;
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  model: string;
+  timestamp: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  session_id: string;
+  role: 'user' | 'model';
+  content: string;
+  timestamp: number;
 }

@@ -8,12 +8,13 @@ import { WorkflowEditor } from './components/WorkflowEditor';
 import { ExecutionPanel } from './components/ExecutionPanel';
 import { ToolsList } from './components/ToolsList';
 import { ToolEditor } from './components/ToolEditor';
+import { ChatInterface } from './components/ChatInterface';
 import { Agent, Workflow, Tool } from './types';
 import { dbService } from './services/db';
-import { Settings, Users, GitBranch, Play, Loader2, PanelRight, Hammer } from 'lucide-react';
+import { Settings, Users, GitBranch, Play, Loader2, PanelRight, Hammer, MessageSquare } from 'lucide-react';
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'agents' | 'workflows' | 'execution' | 'tools'>('agents');
+  const [activeTab, setActiveTab] = useState<'agents' | 'workflows' | 'execution' | 'tools' | 'chat'>('agents');
   const [agents, setAgents] = useState<Agent[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
@@ -165,6 +166,9 @@ const App: React.FC = () => {
             <button onClick={() => setActiveTab('execution')} className={`p-2 rounded-lg transition-all ${activeTab === 'execution' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-600 hover:text-zinc-400'}`}>
               <Play className="w-5 h-5" />
             </button>
+            <button onClick={() => setActiveTab('chat')} className={`p-2 rounded-lg transition-all ${activeTab === 'chat' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-600 hover:text-zinc-400'}`}>
+              <MessageSquare className="w-5 h-5" />
+            </button>
           </div>
         </div>
       )}
@@ -258,7 +262,6 @@ const App: React.FC = () => {
                 name: '',
                 description: '',
                 className: '',
-                // Fixed: Added language property which was missing and causing a type error.
                 language: 'javascript',
                 parameters: { type: 'OBJECT', properties: {}, required: [] },
                 code: `async (args) => {\n  // Implementation here\n  return 'Success';\n}`
@@ -269,6 +272,10 @@ const App: React.FC = () => {
 
         {activeTab === 'execution' && (
           <ExecutionPanel workflows={workflows} agents={agents} tools={tools} />
+        )}
+
+        {activeTab === 'chat' && (
+          <ChatInterface />
         )}
       </main>
     </div>
