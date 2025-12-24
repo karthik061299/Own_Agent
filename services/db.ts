@@ -276,7 +276,7 @@ export const dbService = {
   },
 
   async saveAgent(agent: Agent) {
-    const getComparableData = (a: any): Omit<AgentVersionData, 'versions'> => {
+    const getComparableData = (a: any): AgentVersionData => {
       const { name, description, role, domain, goal, backstory, inputs, config } = a;
       return {
         name, description, role, domain, goal, backstory, inputs, config,
@@ -291,40 +291,55 @@ export const dbService = {
 
     if (existingRows.length > 0) {
       const oldAgent = existingRows[0];
-      
       const oldComparable = getComparableData(oldAgent);
       const newComparable = getComparableData(agent);
       const coreDataChanged = JSON.stringify(oldComparable) !== JSON.stringify(newComparable);
+      const versioningChanged = oldAgent.version !== agent.version || JSON.stringify(oldAgent.versions || []) !== JSON.stringify(agent.versions || []);
 
       if (coreDataChanged) {
-        const snapshotData: AgentVersionData = { ...oldComparable };
-        const snapshotEntry = { version: oldAgent.version, data: snapshotData, createdAt: Date.now() };
-        
-        const newVersions = agent.versions ? [...(agent.versions as any[])] : [];
-        if (!newVersions.some(v => v.version === snapshotEntry.version)) {
-            newVersions.push(snapshotEntry);
-        }
-        newVersions.sort((a,b) => a.version - b.version);
-        
-        const newVersionNumber = oldAgent.version + 1;
+        const isRevertToHistory = (oldAgent.versions || []).some(v => 
+          JSON.stringify(getComparableData(v.data)) === JSON.stringify(newComparable)
+        );
 
-        await sql`
-          UPDATE "AI_Agent".agents SET
-            name = ${agent.name}, description = ${agent.description}, role = ${agent.role}, domain = ${agent.domain}, goal = ${agent.goal}, backstory = ${agent.backstory},
-            task_description = ${agent.taskDescription}, inputs = ${JSON.stringify(agent.inputs)}, expected_output = ${agent.expectedOutput}, output_file_extension = ${agent.outputFileExtension || null},
-            config = ${JSON.stringify(agent.config)}, tool_ids = ${agent.toolIds || []}, version = ${newVersionNumber}, versions = ${JSON.stringify(newVersions)}
-          WHERE id = ${agent.id}::UUID
-        `;
-      } else {
-        const versioningChanged = oldAgent.version !== agent.version || JSON.stringify(oldAgent.versions || []) !== JSON.stringify(agent.versions || []);
-        if (versioningChanged) {
+        if (isRevertToHistory) {
+          // This is a versioning operation (load/delete current) that changed core data.
+          // We just persist the state from the client without creating a new version.
           await sql`
-            UPDATE "AI_Agent".agents SET version = ${agent.version}, versions = ${JSON.stringify(agent.versions)}
+            UPDATE "AI_Agent".agents SET
+              name = ${agent.name}, description = ${agent.description}, role = ${agent.role}, domain = ${agent.domain}, goal = ${agent.goal}, backstory = ${agent.backstory},
+              task_description = ${agent.taskDescription}, inputs = ${JSON.stringify(agent.inputs)}, expected_output = ${agent.expectedOutput}, output_file_extension = ${agent.outputFileExtension || null},
+              config = ${JSON.stringify(agent.config)}, tool_ids = ${agent.toolIds || []},
+              version = ${agent.version}, versions = ${JSON.stringify(agent.versions)}
+            WHERE id = ${agent.id}::UUID
+          `;
+        } else {
+          // This is a genuine content edit. Create a new version.
+          const snapshotData: AgentVersionData = { ...oldComparable };
+          const snapshotEntry = { version: oldAgent.version, data: snapshotData, createdAt: Date.now() };
+          const newVersions = [...(oldAgent.versions || []), snapshotEntry].sort((a,b) => a.version - b.version);
+          const newVersionNumber = oldAgent.version + 1;
+          
+          await sql`
+            UPDATE "AI_Agent".agents SET
+              name = ${agent.name}, description = ${agent.description}, role = ${agent.role}, domain = ${agent.domain}, goal = ${agent.goal}, backstory = ${agent.backstory},
+              task_description = ${agent.taskDescription}, inputs = ${JSON.stringify(agent.inputs)}, expected_output = ${agent.expectedOutput}, output_file_extension = ${agent.outputFileExtension || null},
+              config = ${JSON.stringify(agent.config)}, tool_ids = ${agent.toolIds || []},
+              version = ${newVersionNumber}, versions = ${JSON.stringify(newVersions)}
             WHERE id = ${agent.id}::UUID
           `;
         }
+      } else if (versioningChanged) {
+        // Core data is the same, but version history changed (e.g., deleting a non-current version).
+        await sql`
+          UPDATE "AI_Agent".agents SET
+            version = ${agent.version},
+            versions = ${JSON.stringify(agent.versions)}
+          WHERE id = ${agent.id}::UUID
+        `;
       }
+      // If nothing changed, do nothing.
     } else {
+      // New agent
       await sql`
         INSERT INTO "AI_Agent".agents (id, name, description, role, domain, goal, backstory, task_description, inputs, expected_output, output_file_extension, config, tool_ids, version, versions)
         VALUES (${agent.id}::UUID, ${agent.name}, ${agent.description}, ${agent.role}, ${agent.domain}, ${agent.goal}, ${agent.backstory}, ${agent.taskDescription}, ${JSON.stringify(agent.inputs)}, ${agent.expectedOutput}, ${agent.outputFileExtension || null}, ${JSON.stringify(agent.config)}, ${agent.toolIds || []}, 1, '[]'::jsonb)
