@@ -36,6 +36,7 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({ agent, tools, onSave, 
   const [versionToDelete, setVersionToDelete] = useState<number | null>(null);
   const [isOtherExtension, setIsOtherExtension] = useState(false);
   const [customExtension, setCustomExtension] = useState('');
+  const [initialAgentJSON] = useState(() => JSON.stringify(agent));
 
   const versionDropdownRef = useRef<HTMLDivElement>(null);
   
@@ -45,6 +46,8 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({ agent, tools, onSave, 
     const currentVersionEntry: AgentVersion = { version: formData.version, data: currentVersionData, createdAt: Date.now() };
     return [...(formData.versions || []), currentVersionEntry].sort((a, b) => b.version - a.version);
   }, [formData]);
+
+  const isDirty = useMemo(() => initialAgentJSON !== JSON.stringify(formData), [initialAgentJSON, formData]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -240,7 +243,7 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({ agent, tools, onSave, 
               </div>
             )}
           </div>
-          <button onClick={() => onSave(formData)} disabled={!isFormValid()} className="flex items-center gap-2 px-4 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-xs font-bold text-zinc-300 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"><Save className="w-3.5 h-3.5" /> Save</button>
+          <button onClick={() => onSave(formData)} disabled={!isFormValid() || !isDirty} className="flex items-center gap-2 px-4 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg text-xs font-bold text-zinc-300 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"><Save className="w-3.5 h-3.5" /> Save</button>
           <button onClick={() => onTest(formData)} disabled={!isFormValid()} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2 rounded-lg transition-all text-xs font-bold shadow-lg shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed"><TestTube className="w-4 h-4" /> Save & Test</button>
         </div>
       </header>

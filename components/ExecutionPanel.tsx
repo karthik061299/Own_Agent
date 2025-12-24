@@ -150,8 +150,12 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
   };
   
   const downloadAllOutputs = () => {
-    const workflow = workflows.find(w => w.metadata.id === selectedWorkflowId);
+    if (!activeExecutionId) return;
+    const activeExec = executions.find(ex => ex.id === activeExecutionId);
+    if (!activeExec) return;
+    const workflow = workflows.find(w => w.metadata.id === activeExec.workflow_id);
     if (!workflow) return;
+
     logsRef.current.forEach(log => {
       if (log.status === 'completed' && log.output && log.nodeId !== 'system' && log.nodeId !== 'manager') {
         const node = workflow.nodes.find(n => n.id === log.nodeId);
@@ -299,7 +303,24 @@ export const ExecutionPanel: React.FC<ExecutionPanelProps> = ({ workflows, agent
         {/* Central Log/Trace Display */}
         <div className="flex-1 flex flex-col bg-black/40 overflow-hidden relative">
            {activeExecutionId ? (<div className="flex-1 flex flex-col overflow-y-auto scrollbar-thin p-8"><div className="max-w-4xl mx-auto w-full space-y-8 animate-in fade-in duration-300">
-            <section className="space-y-4"><div className="flex items-center justify-between group"><div className="flex items-center gap-3"><button onClick={() => setIsLogExpanded(!isLogExpanded)} className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-widest hover:text-zinc-300 transition-colors"><Terminal className="w-4 h-4 text-indigo-500" /> Consolidated Log {isLogExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}</button>{(isExecuting ? elapsedSeconds > 0 : activeExecution?.duration !== undefined) && (<span className="px-2.5 py-1 rounded-full bg-indigo-900/30 text-indigo-400 text-[10px] font-bold border border-indigo-500/20">Execution Time: {formatDuration(isExecuting ? elapsedSeconds : activeExecution?.duration)}</span>)}</div><div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={downloadAllOutputs} className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-400 hover:text-white transition-colors" title="Download All Outputs"><Download className="w-4 h-4" /></button></div></div>{isLogExpanded && (<div className="bg-[#0c0c0e] border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/5 font-mono text-[11px] leading-relaxed animate-in slide-in-from-top-3 duration-300"><div className="bg-zinc-900/50 px-5 py-3 border-b border-zinc-800 flex items-center justify-between"><span className="text-zinc-600 uppercase tracking-widest text-[9px] font-bold">Live System Trace • ID: {activeExecutionId.slice(0,8)}</span>{isExecuting && <span className="flex items-center gap-2 text-indigo-500 text-[9px] font-bold uppercase animate-pulse"><div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-ping" /> Synchronizing</span>}</div><div className="p-6 space-y-4 min-h-[150px] max-h-[500px] overflow-y-auto scrollbar-thin">{logs.map((log) => <LogEntry key={log.id} log={log} />)}{isExecuting && <div className="flex items-center gap-3 text-indigo-400 text-[10px] font-bold uppercase tracking-widest pl-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Processing next instruction...</div>}</div></div>)}</section>
+            <section className="space-y-4">
+              <div className="flex items-center justify-between group">
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setIsLogExpanded(!isLogExpanded)} className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-widest hover:text-zinc-300 transition-colors">
+                    <Terminal className="w-4 h-4 text-indigo-500" /> Consolidated Log {isLogExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                  {(isExecuting ? elapsedSeconds > 0 : activeExecution?.duration !== undefined) && (
+                    <span className="px-2.5 py-1 rounded-full bg-indigo-900/30 text-indigo-400 text-[10px] font-bold border border-indigo-500/20">Execution Time: {formatDuration(isExecuting ? elapsedSeconds : activeExecution?.duration)}</span>
+                  )}
+                </div>
+                {!isExecuting && logs.some(l => l.status === 'completed' && l.output) &&
+                  <button onClick={downloadAllOutputs} className="flex items-center gap-2 text-xs font-bold bg-zinc-800 text-zinc-300 px-3 py-1.5 rounded-lg hover:bg-zinc-700 transition-colors" title="Download All Outputs">
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download All</span>
+                  </button>
+                }
+              </div>
+              {isLogExpanded && (<div className="bg-[#0c0c0e] border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/5 font-mono text-[11px] leading-relaxed animate-in slide-in-from-top-3 duration-300"><div className="bg-zinc-900/50 px-5 py-3 border-b border-zinc-800 flex items-center justify-between"><span className="text-zinc-600 uppercase tracking-widest text-[9px] font-bold">Live System Trace • ID: {activeExecutionId.slice(0,8)}</span>{isExecuting && <span className="flex items-center gap-2 text-indigo-500 text-[9px] font-bold uppercase animate-pulse"><div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-ping" /> Synchronizing</span>}</div><div className="p-6 space-y-4 min-h-[150px] max-h-[500px] overflow-y-auto scrollbar-thin">{logs.map((log) => <LogEntry key={log.id} log={log} />)}{isExecuting && <div className="flex items-center gap-3 text-indigo-400 text-[10px] font-bold uppercase tracking-widest pl-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Processing next instruction...</div>}</div></div>)}</section>
             <section className="space-y-4 pb-20"><h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2"><Layers className="w-4 h-4" /> Agent Traces</h3><div className="flex gap-3 overflow-x-auto pb-4 scrollbar-thin">{logs.filter(l => l.nodeId !== 'manager' && l.nodeId !== 'system').map(log => (<button key={log.id} onClick={() => setActiveLogId(log.id)} className={`shrink-0 flex items-center gap-4 px-5 py-3 rounded-2xl border transition-all ${activeLogId === log.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/20' : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700'}`}><div className={`w-2.5 h-2.5 rounded-full ${log.status === 'completed' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : log.status === 'failed' ? 'bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.5)]' : log.status === 'stopped' ? 'bg-amber-400' : 'bg-indigo-400 animate-pulse'}`} /><span className="text-[11px] font-bold uppercase tracking-wider">{log.agentName} (V{log.version})</span></button>))}</div>
             {activeLog && activeLog.nodeId !== 'manager' && activeLog.nodeId !== 'system' && (<div className="animate-in fade-in slide-in-from-bottom-3 duration-400 space-y-6"><div className="p-10 bg-[#0c0c0e] border border-zinc-800 rounded-3xl shadow-2xl relative group min-h-[400px]">
               <div className="text-[11px] font-bold text-zinc-500 uppercase tracking-[0.2em] mb-8 flex items-center justify-between"><div className="flex items-center gap-3"><FileText className="w-4 h-4" /><span>Agent Trace: {activeLog.agentName}</span><span className="text-[9px] font-mono text-zinc-600 bg-zinc-900 px-1.5 py-0.5 rounded-md border border-zinc-800">V{activeLog.version}</span></div>
