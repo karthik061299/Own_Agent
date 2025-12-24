@@ -112,21 +112,19 @@ export interface DBModel {
   is_active?: boolean;
 }
 
+// FIX: Add PlatformSettings interface to support the settings view.
+export interface PlatformSettings {
+  id: number;
+  default_rpm: number;
+  default_timeout: number;
+}
+
 export interface Engine {
   id: number;
   name: string;
   description?: string;
   is_active?: boolean;
   api_key?: string;
-}
-
-export interface PlatformSettings {
-  id: string;
-  default_rpm: number;
-  default_timeout: number;
-  default_max_iterations: number;
-  enable_thinking_mode: boolean;
-  updated_at: number;
 }
 
 export interface ChatSession {

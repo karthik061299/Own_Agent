@@ -25,8 +25,8 @@ export const dbService = {
 
       // Migration: Ensure all columns exist in ai_engines
       await sql`ALTER TABLE "AI_Agent".ai_engines ADD COLUMN IF NOT EXISTS description TEXT`;
-      await sql`ALTER TABLE "AI_Agent".ai_engines ADD COLUMN IF NOT EXISTS api_key TEXT`;
       await sql`ALTER TABLE "AI_Agent".ai_engines ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE`;
+      await sql`ALTER TABLE "AI_Agent".ai_engines ADD COLUMN IF NOT EXISTS api_key TEXT`;
 
       await sql`
         CREATE TABLE IF NOT EXISTS "AI_Agent".models (
@@ -41,17 +41,6 @@ export const dbService = {
       // Migration: Ensure model activation column
       await sql`ALTER TABLE "AI_Agent".models ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE`;
 
-      await sql`
-        CREATE TABLE IF NOT EXISTS "AI_Agent".settings (
-          id TEXT PRIMARY KEY,
-          default_rpm INTEGER DEFAULT 10,
-          default_timeout INTEGER DEFAULT 60,
-          default_max_iterations INTEGER DEFAULT 5,
-          enable_thinking_mode BOOLEAN DEFAULT TRUE,
-          updated_at BIGINT
-        )
-      `;
-
       // Seed Domains
       const domains = ['AI/ML', 'Backend Engineering', 'Data Engineering', 'Frontend Engineering', 'Platform Engineering', 'Quality Engineering'];
       for (const d of domains) {
@@ -64,6 +53,8 @@ export const dbService = {
         VALUES (1, 'GoogleAI', 'Google Gemini API - Native integration for Flash and Pro models.') 
         ON CONFLICT (id) DO UPDATE SET description = EXCLUDED.description
       `;
+      // Set the API key for the GoogleAI engine
+      await sql`UPDATE "AI_Agent".ai_engines SET api_key = 'AIzaSyAQ9mrDx7rx7L4xjTgCskBd90cEIvwLXDM' WHERE id = 1`;
       
       // Seed Models
       await sql`
@@ -72,13 +63,6 @@ export const dbService = {
           ('gemini-3-flash-preview', 1, 'Gemini 3 Flash (Fast & Lean)', 'gemini-3-flash-preview', 16384),
           ('gemini-3-pro-preview', 1, 'Gemini 3 Pro (Complex Reasoning)', 'gemini-3-pro-preview', 64000)
         ON CONFLICT (id) DO NOTHING
-      `;
-
-      // Seed Initial Settings
-      await sql`
-        INSERT INTO "AI_Agent".settings (id, updated_at)
-        VALUES ('global', ${Date.now()})
-        ON CONFLICT DO NOTHING
       `;
 
       await sql`
@@ -141,6 +125,17 @@ export const dbService = {
         )
       `;
 
+      // FIX: Add platform_settings table for global config.
+      await sql`
+        CREATE TABLE IF NOT EXISTS "AI_Agent".platform_settings (
+          id SERIAL PRIMARY KEY,
+          default_rpm INTEGER DEFAULT 60,
+          default_timeout INTEGER DEFAULT 600
+        )
+      `;
+      // Seed settings
+      await sql`INSERT INTO "AI_Agent".platform_settings (id, default_rpm, default_timeout) VALUES (1, 60, 600) ON CONFLICT (id) DO NOTHING`;
+
       await sql`
         CREATE TABLE IF NOT EXISTS "AI_Agent".chat_sessions (
           id UUID PRIMARY KEY,
@@ -169,24 +164,6 @@ export const dbService = {
     }
   },
 
-  async getPlatformSettings(): Promise<PlatformSettings> {
-    const rows = await sql`SELECT * FROM "AI_Agent".settings WHERE id = 'global'`;
-    return rows[0] as unknown as PlatformSettings;
-  },
-
-  async savePlatformSettings(settings: Partial<PlatformSettings>) {
-    await sql`
-      UPDATE "AI_Agent".settings 
-      SET 
-        default_rpm = ${settings.default_rpm},
-        default_timeout = ${settings.default_timeout},
-        default_max_iterations = ${settings.default_max_iterations},
-        enable_thinking_mode = ${settings.enable_thinking_mode},
-        updated_at = ${Date.now()}
-      WHERE id = 'global'
-    `;
-  },
-
   async getDomains(): Promise<string[]> {
     const rows = await sql`SELECT name FROM "AI_Agent".domains ORDER BY name ASC`;
     return rows.map(r => r.name);
@@ -203,15 +180,6 @@ export const dbService = {
     }));
   },
 
-  async updateEngine(id: number, updates: Partial<Engine>) {
-    if (updates.api_key !== undefined) {
-      await sql`UPDATE "AI_Agent".ai_engines SET api_key = ${updates.api_key} WHERE id = ${id}`;
-    }
-    if (updates.is_active !== undefined) {
-      await sql`UPDATE "AI_Agent".ai_engines SET is_active = ${updates.is_active} WHERE id = ${id}`;
-    }
-  },
-
   async getModels(): Promise<DBModel[]> {
     const rows = await sql`SELECT * FROM "AI_Agent".models ORDER BY name ASC`;
     return rows.map(r => ({
@@ -226,6 +194,38 @@ export const dbService = {
 
   async updateModelStatus(id: string, isActive: boolean) {
     await sql`UPDATE "AI_Agent".models SET is_active = ${isActive} WHERE id = ${id}`;
+  },
+
+  // FIX: Implement getPlatformSettings to retrieve global settings.
+  async getPlatformSettings(): Promise<PlatformSettings> {
+    const rows = await sql`SELECT * FROM "AI_Agent".platform_settings WHERE id = 1`;
+    if (rows.length === 0) {
+      // This should not happen if initSchema seeds data
+      return { id: 1, default_rpm: 60, default_timeout: 600 };
+    }
+    return {
+      id: rows[0].id,
+      default_rpm: rows[0].default_rpm,
+      default_timeout: rows[0].default_timeout
+    };
+  },
+
+  // FIX: Implement savePlatformSettings to persist global settings.
+  async savePlatformSettings(settings: PlatformSettings) {
+    await sql`
+      UPDATE "AI_Agent".platform_settings
+      SET default_rpm = ${settings.default_rpm}, default_timeout = ${settings.default_timeout}
+      WHERE id = 1
+    `;
+  },
+  
+  // FIX: Implement updateEngine to persist engine-specific settings like API keys.
+  async updateEngine(id: number, data: { api_key?: string; is_active?: boolean }) {
+    await sql`
+      UPDATE "AI_Agent".ai_engines
+      SET api_key = ${data.api_key}, is_active = ${data.is_active}
+      WHERE id = ${id}
+    `;
   },
 
   async getTools(): Promise<Tool[]> {

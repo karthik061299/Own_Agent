@@ -9,13 +9,12 @@ import { ExecutionPanel } from './components/ExecutionPanel';
 import { ToolsList } from './components/ToolsList';
 import { ToolEditor } from './components/ToolEditor';
 import { ChatInterface } from './components/ChatInterface';
-import { SettingsView } from './components/SettingsView';
 import { Agent, Workflow, Tool } from './types';
 import { dbService } from './services/db';
 import { Settings, Users, GitBranch, Play, Loader2, PanelRight, Hammer, MessageSquare, AlertCircle, X } from 'lucide-react';
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'agents' | 'workflows' | 'execution' | 'tools' | 'chat' | 'settings'>('agents');
+  const [activeTab, setActiveTab] = useState<'agents' | 'workflows' | 'execution' | 'tools' | 'chat'>('agents');
   const [agents, setAgents] = useState<Agent[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
@@ -181,9 +180,6 @@ const App: React.FC = () => {
             <button onClick={() => setActiveTab('chat')} className={`p-2 rounded-lg transition-all ${activeTab === 'chat' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-600 hover:text-zinc-400'}`}>
               <MessageSquare className="w-5 h-5" />
             </button>
-            <button onClick={() => setActiveTab('settings')} className={`p-2 rounded-lg transition-all ${activeTab === 'settings' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-600 hover:text-zinc-400'}`}>
-              <Settings className="w-5 h-5" />
-            </button>
           </div>
         </div>
       )}
@@ -293,9 +289,6 @@ const App: React.FC = () => {
           <ChatInterface />
         )}
 
-        {activeTab === 'settings' && (
-          <SettingsView />
-        )}
       </main>
 
       {/* Deletion Confirmation Modal */}

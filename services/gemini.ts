@@ -1,6 +1,6 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { AgentConfig, GeminiModel, Tool } from "../types";
+import { AgentConfig, Tool } from "../types";
 import { dbService } from "./db";
 
 export class GeminiService {
@@ -17,20 +17,17 @@ export class GeminiService {
       const modelInfo = allModels.find(m => m.id === model);
       
       if (modelInfo && modelInfo.is_active === false) {
-        throw new Error(`The requested model '${model}' is currently deactivated in platform settings.`);
+        throw new Error(`The requested model '${model}' is currently deactivated.`);
       }
 
-      const engines = await dbService.getEngines();
-      const engineInfo = engines.find(e => e.id === modelInfo?.engine_id);
-      
-      // Use DB key if present, fallback to process.env.API_KEY
-      const apiKey = engineInfo?.api_key || process.env.API_KEY;
-      
+      const allEngines = await dbService.getEngines();
+      const engineInfo = allEngines.find(e => e.id === modelInfo?.engine_id);
+
+      const apiKey = engineInfo?.api_key;
       if (!apiKey) {
-        throw new Error(`No API Key provided for engine '${engineInfo?.name || 'Unknown'}'. Please configure it in Settings.`);
+        throw new Error(`API Key not found in database for model ${model}. Please ensure it is configured by a developer.`);
       }
 
-      const settings = await dbService.getPlatformSettings();
       const maxTokens = modelInfo?.max_tokens || 2048;
 
       // Transform Tools to Gemini FunctionDeclarations
@@ -51,9 +48,6 @@ export class GeminiService {
           maxOutputTokens: maxTokens,
           responseMimeType: responseMimeType,
           tools: toolConfigs && toolConfigs.length > 0 ? [{ functionDeclarations: toolConfigs }] : undefined,
-          ...(settings.enable_thinking_mode && (model.startsWith('gemini-3') || model.startsWith('gemini-2.5'))
-            ? { thinkingConfig: { thinkingBudget: 1024 } } 
-            : {})
         }
       });
       
