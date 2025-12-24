@@ -36,6 +36,14 @@ export interface AgentConfig {
   maxIterations: number;
 }
 
+export type AgentVersionData = Omit<Agent, 'id' | 'versions' | 'version'>;
+
+export interface AgentVersion {
+  version: number;
+  data: AgentVersionData;
+  createdAt: number;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -47,8 +55,11 @@ export interface Agent {
   taskDescription: string;
   inputs: AgentInput[];
   expectedOutput: string;
+  outputFileExtension?: string;
   config: AgentConfig;
   toolIds?: string[];
+  version: number;
+  versions?: AgentVersion[];
 }
 
 export interface WorkflowMetadata {
@@ -112,13 +123,6 @@ export interface DBModel {
   is_active?: boolean;
 }
 
-// FIX: Add PlatformSettings interface to support the settings view.
-export interface PlatformSettings {
-  id: number;
-  default_rpm: number;
-  default_timeout: number;
-}
-
 export interface Engine {
   id: number;
   name: string;
@@ -140,4 +144,10 @@ export interface ChatMessage {
   role: 'user' | 'model';
   content: string;
   timestamp: number;
+}
+
+export interface FileExtension {
+  id: number;
+  name: string;
+  extension: string;
 }

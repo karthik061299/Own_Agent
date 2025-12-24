@@ -4,6 +4,24 @@ import { AgentConfig, Tool } from "../types";
 import { dbService } from "./db";
 
 export class GeminiService {
+  private async getApiKeyForModel(model: string): Promise<string> {
+    const allModels = await dbService.getModels();
+    const modelInfo = allModels.find(m => m.id === model);
+    
+    if (modelInfo && modelInfo.is_active === false) {
+      throw new Error(`The requested model '${model}' is currently deactivated.`);
+    }
+
+    const allEngines = await dbService.getEngines();
+    const engineInfo = allEngines.find(e => e.id === modelInfo?.engine_id);
+
+    const apiKey = engineInfo?.api_key;
+    if (!apiKey) {
+      throw new Error(`API Key not found in database for model ${model}. Please ensure it is configured by a developer.`);
+    }
+    return apiKey;
+  }
+
   async generate(
     model: string,
     systemInstruction: string,
@@ -13,24 +31,11 @@ export class GeminiService {
     tools?: Tool[]
   ) {
     try {
+      const apiKey = await this.getApiKeyForModel(model);
       const allModels = await dbService.getModels();
       const modelInfo = allModels.find(m => m.id === model);
-      
-      if (modelInfo && modelInfo.is_active === false) {
-        throw new Error(`The requested model '${model}' is currently deactivated.`);
-      }
-
-      const allEngines = await dbService.getEngines();
-      const engineInfo = allEngines.find(e => e.id === modelInfo?.engine_id);
-
-      const apiKey = engineInfo?.api_key;
-      if (!apiKey) {
-        throw new Error(`API Key not found in database for model ${model}. Please ensure it is configured by a developer.`);
-      }
-
       const maxTokens = modelInfo?.max_tokens || 2048;
 
-      // Transform Tools to Gemini FunctionDeclarations
       const toolConfigs = tools?.map(t => ({
         name: t.className,
         description: t.description,
@@ -55,6 +60,40 @@ export class GeminiService {
     } catch (error: any) {
       console.error("Gemini Generation Error:", error);
       throw new Error(error.message || "Failed to generate content");
+    }
+  }
+
+  async generateWithToolResults(
+    model: string,
+    config: Partial<AgentConfig>,
+    systemInstruction: string,
+    finalInput: string,
+    functionCalls: any[],
+    toolResults: any[]
+  ) {
+    try {
+      const apiKey = await this.getApiKeyForModel(model);
+      const ai = new GoogleGenAI({ apiKey });
+
+      const contents = [
+        { role: 'user', parts: [{ text: finalInput }] },
+        { role: 'model', parts: functionCalls.map(fc => ({ functionCall: fc })) },
+        { role: 'user', parts: toolResults.map(tr => ({ functionResponse: tr })) }
+      ];
+
+      const response = await ai.models.generateContent({
+        model,
+        contents,
+        config: {
+          systemInstruction,
+          temperature: config.temperature,
+          topP: config.topP,
+        }
+      });
+      return response;
+    } catch (error: any) {
+      console.error("Gemini Tool Response Generation Error:", error);
+      throw new Error(error.message || "Failed to generate content after tool execution");
     }
   }
 

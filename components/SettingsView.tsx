@@ -1,16 +1,17 @@
 
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../services/db';
-import { Engine, DBModel, PlatformSettings } from '../types';
+// FIX: Removed unused and non-existent PlatformSettings type.
+import { Engine, DBModel } from '../types';
 import { 
   Settings, Save, Globe, Cpu, CheckCircle2, XCircle, 
-  Info, ShieldCheck, Zap, Clock, Activity, Loader2, Key, Eye, EyeOff
+  Info, ShieldCheck, Loader2, Key, Eye, EyeOff
 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
   const [engines, setEngines] = useState<Engine[]>([]);
   const [models, setModels] = useState<DBModel[]>([]);
-  const [settings, setSettings] = useState<PlatformSettings | null>(null);
+  // FIX: Removed state for deprecated PlatformSettings.
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [visibleKeys, setVisibleKeys] = useState<Record<number, boolean>>({});
@@ -22,14 +23,13 @@ export const SettingsView: React.FC = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [e, m, s] = await Promise.all([
+      // FIX: Removed call to non-existent getPlatformSettings.
+      const [e, m] = await Promise.all([
         dbService.getEngines(),
         dbService.getModels(),
-        dbService.getPlatformSettings()
       ]);
       setEngines(e);
       setModels(m);
-      setSettings(s);
     } catch (err) {
       console.error("Failed to load settings:", err);
     } finally {
@@ -38,11 +38,10 @@ export const SettingsView: React.FC = () => {
   };
 
   const handleSaveSettings = async () => {
-    if (!settings) return;
+    // FIX: Removed check for settings object.
     setIsSaving(true);
     try {
-      // Save global settings
-      await dbService.savePlatformSettings(settings);
+      // FIX: Removed call to non-existent savePlatformSettings.
       
       // Save engine specific keys and status
       for (const engine of engines) {
@@ -77,7 +76,8 @@ export const SettingsView: React.FC = () => {
     }
   };
 
-  if (isLoading || !settings) {
+  // FIX: Removed check for settings object.
+  if (isLoading) {
     return (
       <div className="h-full flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
@@ -122,37 +122,8 @@ export const SettingsView: React.FC = () => {
           </div>
         </section>
 
-        {/* Global Defaults */}
-        <section className="space-y-6">
-          <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2 border-b border-zinc-800 pb-3">
-             <Activity className="w-4 h-4" /> Global Workflow Constraints
-          </h3>
-          <div className="grid grid-cols-2 gap-8">
-            <div className="bg-zinc-900/40 border border-zinc-800 p-6 rounded-2xl space-y-4">
-               <div className="flex justify-between items-center">
-                  <label className="text-sm font-bold text-zinc-300 flex items-center gap-2"><Zap className="w-4 h-4 text-amber-500" /> Default RPM Limit</label>
-                  <input 
-                    type="number" value={settings.default_rpm}
-                    onChange={(e) => setSettings({ ...settings, default_rpm: parseInt(e.target.value) })}
-                    className="w-20 bg-black border border-zinc-800 rounded-lg px-3 py-2 text-indigo-400 font-mono text-center outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
-               </div>
-               <p className="text-[10px] text-zinc-600 leading-relaxed uppercase font-bold tracking-tighter">Default Rate Limit for models without specific overrides.</p>
-            </div>
-            <div className="bg-zinc-900/40 border border-zinc-800 p-6 rounded-2xl space-y-4">
-               <div className="flex justify-between items-center">
-                  <label className="text-sm font-bold text-zinc-300 flex items-center gap-2"><Clock className="w-4 h-4 text-sky-500" /> Default Timeout (sec)</label>
-                  <input 
-                    type="number" value={settings.default_timeout}
-                    onChange={(e) => setSettings({ ...settings, default_timeout: parseInt(e.target.value) })}
-                    className="w-20 bg-black border border-zinc-800 rounded-lg px-3 py-2 text-indigo-400 font-mono text-center outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
-               </div>
-               <p className="text-[10px] text-zinc-600 leading-relaxed uppercase font-bold tracking-tighter">Max time for a single agent execution.</p>
-            </div>
-          </div>
-        </section>
-
+        {/* FIX: Removed Global Defaults section which relied on the deprecated PlatformSettings. */}
+        
         {/* Engine Management */}
         <section className="space-y-6">
           <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2 border-b border-zinc-800 pb-3">

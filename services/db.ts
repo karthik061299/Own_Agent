@@ -1,6 +1,6 @@
 
 import { neon } from '@neondatabase/serverless';
-import { Agent, Workflow, ExecutionLog, DBModel, WorkflowExecution, Tool, ChatMessage, ChatSession, Engine, PlatformSettings } from '../types';
+import { Agent, Workflow, ExecutionLog, DBModel, WorkflowExecution, Tool, ChatMessage, ChatSession, Engine, FileExtension, AgentVersionData } from '../types';
 
 const sql = neon(`postgres://neondb_owner:npg_o5YcBDbpueE8@ep-dawn-river-a1yzfjdr-pooler.ap-southeast-1.aws.neon.tech/neondb`);
 
@@ -13,6 +13,14 @@ export const dbService = {
         CREATE TABLE IF NOT EXISTS "AI_Agent".domains (
           id SERIAL PRIMARY KEY,
           name TEXT UNIQUE NOT NULL
+        )
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS "AI_Agent".file_extensions (
+          id SERIAL PRIMARY KEY,
+          name TEXT NOT NULL,
+          extension TEXT UNIQUE NOT NULL
         )
       `;
 
@@ -38,25 +46,33 @@ export const dbService = {
         )
       `;
       
-      // Migration: Ensure model activation column
       await sql`ALTER TABLE "AI_Agent".models ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE`;
 
-      // Seed Domains
       const domains = ['AI/ML', 'Backend Engineering', 'Data Engineering', 'Frontend Engineering', 'Platform Engineering', 'Quality Engineering'];
       for (const d of domains) {
         await sql`INSERT INTO "AI_Agent".domains (name) VALUES (${d}) ON CONFLICT DO NOTHING`;
       }
 
-      // Seed Engines
+      const extensions = [
+        { name: 'Text', extension: '.txt' },
+        { name: 'Python', extension: '.py' },
+        { name: 'Java', extension: '.java' },
+        { name: 'SQL', extension: '.sql' },
+        { name: 'Markdown', extension: '.md' },
+        { name: 'JavaScript', extension: '.js' },
+        { name: 'JSON', extension: '.json' },
+      ];
+      for (const ext of extensions) {
+        await sql`INSERT INTO "AI_Agent".file_extensions (name, extension) VALUES (${ext.name}, ${ext.extension}) ON CONFLICT DO NOTHING`;
+      }
+
       await sql`
         INSERT INTO "AI_Agent".ai_engines (id, name, description) 
         VALUES (1, 'GoogleAI', 'Google Gemini API - Native integration for Flash and Pro models.') 
         ON CONFLICT (id) DO UPDATE SET description = EXCLUDED.description
       `;
-      // Set the API key for the GoogleAI engine
       await sql`UPDATE "AI_Agent".ai_engines SET api_key = 'AIzaSyAQ9mrDx7rx7L4xjTgCskBd90cEIvwLXDM' WHERE id = 1`;
       
-      // Seed Models
       await sql`
         INSERT INTO "AI_Agent".models (id, engine_id, name, full_name, max_tokens)
         VALUES 
@@ -96,6 +112,11 @@ export const dbService = {
         )
       `;
 
+      await sql`ALTER TABLE "AI_Agent".agents ADD COLUMN IF NOT EXISTS output_file_extension TEXT`;
+      await sql`ALTER TABLE "AI_Agent".agents ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1`;
+      await sql`ALTER TABLE "AI_Agent".agents ADD COLUMN IF NOT EXISTS versions JSONB DEFAULT '[]'::jsonb`;
+
+
       await sql`
         CREATE TABLE IF NOT EXISTS "AI_Agent".workflows (
           id UUID PRIMARY KEY,
@@ -125,17 +146,6 @@ export const dbService = {
         )
       `;
 
-      // FIX: Add platform_settings table for global config.
-      await sql`
-        CREATE TABLE IF NOT EXISTS "AI_Agent".platform_settings (
-          id SERIAL PRIMARY KEY,
-          default_rpm INTEGER DEFAULT 60,
-          default_timeout INTEGER DEFAULT 600
-        )
-      `;
-      // Seed settings
-      await sql`INSERT INTO "AI_Agent".platform_settings (id, default_rpm, default_timeout) VALUES (1, 60, 600) ON CONFLICT (id) DO NOTHING`;
-
       await sql`
         CREATE TABLE IF NOT EXISTS "AI_Agent".chat_sessions (
           id UUID PRIMARY KEY,
@@ -156,6 +166,8 @@ export const dbService = {
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `;
+      
+      await sql`DROP TABLE IF EXISTS "AI_Agent".platform_settings`;
 
       console.log('PostgreSQL Schema & Management Tables Initialized');
     } catch (error) {
@@ -167,6 +179,11 @@ export const dbService = {
   async getDomains(): Promise<string[]> {
     const rows = await sql`SELECT name FROM "AI_Agent".domains ORDER BY name ASC`;
     return rows.map(r => r.name);
+  },
+
+  async getFileExtensions(): Promise<FileExtension[]> {
+    const rows = await sql`SELECT * FROM "AI_Agent".file_extensions ORDER BY name ASC`;
+    return rows.map(r => ({ id: r.id, name: r.name, extension: r.extension }));
   },
 
   async getEngines(): Promise<Engine[]> {
@@ -196,34 +213,12 @@ export const dbService = {
     await sql`UPDATE "AI_Agent".models SET is_active = ${isActive} WHERE id = ${id}`;
   },
 
-  // FIX: Implement getPlatformSettings to retrieve global settings.
-  async getPlatformSettings(): Promise<PlatformSettings> {
-    const rows = await sql`SELECT * FROM "AI_Agent".platform_settings WHERE id = 1`;
-    if (rows.length === 0) {
-      // This should not happen if initSchema seeds data
-      return { id: 1, default_rpm: 60, default_timeout: 600 };
-    }
-    return {
-      id: rows[0].id,
-      default_rpm: rows[0].default_rpm,
-      default_timeout: rows[0].default_timeout
-    };
-  },
-
-  // FIX: Implement savePlatformSettings to persist global settings.
-  async savePlatformSettings(settings: PlatformSettings) {
-    await sql`
-      UPDATE "AI_Agent".platform_settings
-      SET default_rpm = ${settings.default_rpm}, default_timeout = ${settings.default_timeout}
-      WHERE id = 1
-    `;
-  },
-  
-  // FIX: Implement updateEngine to persist engine-specific settings like API keys.
   async updateEngine(id: number, data: { api_key?: string; is_active?: boolean }) {
     await sql`
       UPDATE "AI_Agent".ai_engines
-      SET api_key = ${data.api_key}, is_active = ${data.is_active}
+      SET
+        api_key = ${data.api_key},
+        is_active = ${data.is_active}
       WHERE id = ${id}
     `;
   },
@@ -272,27 +267,85 @@ export const dbService = {
       taskDescription: row.task_description,
       inputs: row.inputs,
       expectedOutput: row.expected_output,
+      outputFileExtension: row.output_file_extension,
       config: row.config,
-      toolIds: row.tool_ids || []
+      toolIds: row.tool_ids || [],
+      version: row.version,
+      versions: row.versions || []
     }));
   },
 
   async saveAgent(agent: Agent) {
+    const getComparableData = (a: any): Omit<AgentVersionData, 'versions'> => {
+      const { name, description, role, domain, goal, backstory, inputs, config } = a;
+      return {
+        name, description, role, domain, goal, backstory, inputs, config,
+        taskDescription: a.task_description || a.taskDescription,
+        expectedOutput: a.expected_output || a.expectedOutput,
+        outputFileExtension: a.output_file_extension || a.outputFileExtension,
+        toolIds: a.tool_ids || a.toolIds || [],
+      };
+    };
+
+    const existingRows = await sql`SELECT * FROM "AI_Agent".agents WHERE id = ${agent.id}::UUID`;
+
+    if (existingRows.length > 0) {
+      const oldAgent = existingRows[0];
+      
+      const oldComparable = getComparableData(oldAgent);
+      const newComparable = getComparableData(agent);
+      const coreDataChanged = JSON.stringify(oldComparable) !== JSON.stringify(newComparable);
+
+      if (coreDataChanged) {
+        const snapshotData: AgentVersionData = { ...oldComparable };
+        const snapshotEntry = { version: oldAgent.version, data: snapshotData, createdAt: Date.now() };
+        
+        const newVersions = agent.versions ? [...(agent.versions as any[])] : [];
+        if (!newVersions.some(v => v.version === snapshotEntry.version)) {
+            newVersions.push(snapshotEntry);
+        }
+        newVersions.sort((a,b) => a.version - b.version);
+        
+        const newVersionNumber = oldAgent.version + 1;
+
+        await sql`
+          UPDATE "AI_Agent".agents SET
+            name = ${agent.name}, description = ${agent.description}, role = ${agent.role}, domain = ${agent.domain}, goal = ${agent.goal}, backstory = ${agent.backstory},
+            task_description = ${agent.taskDescription}, inputs = ${JSON.stringify(agent.inputs)}, expected_output = ${agent.expectedOutput}, output_file_extension = ${agent.outputFileExtension || null},
+            config = ${JSON.stringify(agent.config)}, tool_ids = ${agent.toolIds || []}, version = ${newVersionNumber}, versions = ${JSON.stringify(newVersions)}
+          WHERE id = ${agent.id}::UUID
+        `;
+      } else {
+        const versioningChanged = oldAgent.version !== agent.version || JSON.stringify(oldAgent.versions || []) !== JSON.stringify(agent.versions || []);
+        if (versioningChanged) {
+          await sql`
+            UPDATE "AI_Agent".agents SET version = ${agent.version}, versions = ${JSON.stringify(agent.versions)}
+            WHERE id = ${agent.id}::UUID
+          `;
+        }
+      }
+    } else {
+      await sql`
+        INSERT INTO "AI_Agent".agents (id, name, description, role, domain, goal, backstory, task_description, inputs, expected_output, output_file_extension, config, tool_ids, version, versions)
+        VALUES (${agent.id}::UUID, ${agent.name}, ${agent.description}, ${agent.role}, ${agent.domain}, ${agent.goal}, ${agent.backstory}, ${agent.taskDescription}, ${JSON.stringify(agent.inputs)}, ${agent.expectedOutput}, ${agent.outputFileExtension || null}, ${JSON.stringify(agent.config)}, ${agent.toolIds || []}, 1, '[]'::jsonb)
+      `;
+    }
+  },
+
+  async deleteAgentVersion(agentId: string, versionNumber: number) {
+    const agentResult = await sql`SELECT * FROM "AI_Agent".agents WHERE id = ${agentId}::UUID`;
+    if (agentResult.length === 0) throw new Error("Agent not found");
+
+    const agent = agentResult[0];
+    const versions = (agent.versions as any[] || []);
+    const updatedVersions = versions.filter(v => v.version !== versionNumber);
+
+    if (versions.length === updatedVersions.length) return;
+
     await sql`
-      INSERT INTO "AI_Agent".agents (id, name, description, role, domain, goal, backstory, task_description, inputs, expected_output, config, tool_ids)
-      VALUES (${agent.id}::UUID, ${agent.name}, ${agent.description}, ${agent.role}, ${agent.domain}, ${agent.goal}, ${agent.backstory}, ${agent.taskDescription}, ${JSON.stringify(agent.inputs)}, ${agent.expectedOutput}, ${JSON.stringify(agent.config)}, ${agent.toolIds || []})
-      ON CONFLICT (id) DO UPDATE SET
-        name = EXCLUDED.name,
-        description = EXCLUDED.description,
-        role = EXCLUDED.role,
-        domain = EXCLUDED.domain,
-        goal = EXCLUDED.goal,
-        backstory = EXCLUDED.backstory,
-        task_description = EXCLUDED.task_description,
-        inputs = EXCLUDED.inputs,
-        expected_output = EXCLUDED.expected_output,
-        config = EXCLUDED.config,
-        tool_ids = EXCLUDED.tool_ids
+      UPDATE "AI_Agent".agents SET
+        versions = ${JSON.stringify(updatedVersions)}
+      WHERE id = ${agentId}::UUID
     `;
   },
 

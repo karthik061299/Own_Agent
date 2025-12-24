@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Agent, Tool } from '../types';
-import { Plus, Edit2, Trash2, User, Search, Filter, Cpu, Hammer } from 'lucide-react';
+import { Plus, Edit2, Trash2, User, Search, Filter, Cpu, Hammer, GitCommit } from 'lucide-react';
 
 interface AgentListProps {
   agents: Agent[];
@@ -100,7 +100,13 @@ export const AgentList: React.FC<AgentListProps> = ({ agents, tools, onEdit, onD
               </div>
 
               <div className="mb-4">
-                <h3 className="text-lg font-bold text-zinc-100 mb-1">{agent.name || 'Untitled Agent'}</h3>
+                <div className="flex justify-between items-baseline">
+                  <h3 className="text-lg font-bold text-zinc-100 mb-1">{agent.name || 'Untitled Agent'}</h3>
+                  <div className="flex items-center gap-1 text-xs font-bold text-zinc-500">
+                    <GitCommit className="w-3.5 h-3.5" />
+                    <span>V{agent.version}</span>
+                  </div>
+                </div>
                 <div className="flex flex-wrap gap-2 mb-2">
                   <div className="px-2 py-0.5 rounded bg-indigo-900/20 text-indigo-400 text-[10px] font-bold uppercase tracking-wider border border-indigo-900/30 inline-block">
                     {agent.domain}
@@ -110,7 +116,6 @@ export const AgentList: React.FC<AgentListProps> = ({ agents, tools, onEdit, onD
                   {agent.description || 'No description provided.'}
                 </p>
 
-                {/* Selected Tools Display */}
                 {agentToolNames.length > 0 && (
                   <div className="space-y-1.5 mb-4">
                     <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-1">
