@@ -72,27 +72,27 @@ export const ToolEditor: React.FC<ToolEditorProps> = ({ tool, onSave, onCancel }
 
   const getLanguageColor = (lang: string) => {
     switch (lang) {
-      case 'javascript': return 'text-amber-400';
-      case 'python': return 'text-blue-400';
-      case 'java': return 'text-red-400';
-      default: return 'text-zinc-400';
+      case 'javascript': return 'text-amber-500 dark:text-amber-400';
+      case 'python': return 'text-blue-500 dark:text-blue-400';
+      case 'java': return 'text-red-500 dark:text-red-400';
+      default: return 'text-zinc-500 dark:text-zinc-400';
     }
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#09090b]">
-      <header className="p-6 border-b border-zinc-800 flex justify-between items-center bg-[#0c0c0e]">
+    <div className="h-full flex flex-col bg-zinc-100 dark:bg-[#09090b]">
+      <header className="p-6 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center bg-white dark:bg-[#0c0c0e]">
         <div className="flex items-center gap-4">
           <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-600/20">
             <Hammer className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-zinc-100">Tool Definition</h2>
+            <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Tool Definition</h2>
             <p className="text-sm text-zinc-500">Logic & Interface Signature</p>
           </div>
         </div>
         <div className="flex gap-3">
-          <button onClick={onCancel} className="px-4 py-2 text-zinc-400 hover:text-zinc-100 transition-colors text-sm font-medium">Cancel</button>
+          <button onClick={onCancel} className="px-4 py-2 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors text-sm font-medium">Cancel</button>
           <button
             onClick={handleSave}
             className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-lg transition-all font-semibold shadow-lg shadow-indigo-600/20"
@@ -106,7 +106,7 @@ export const ToolEditor: React.FC<ToolEditorProps> = ({ tool, onSave, onCancel }
         <div className="flex-1 overflow-y-auto p-8 space-y-8 scrollbar-thin">
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-4">
-              <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-800 pb-2">Tool Identity</h3>
+              <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-200 dark:border-zinc-800 pb-2">Tool Identity</h3>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -116,7 +116,7 @@ export const ToolEditor: React.FC<ToolEditorProps> = ({ tool, onSave, onCancel }
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       placeholder="e.g. GitHub Reader"
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
+                      className="w-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
                     />
                   </div>
                   <div>
@@ -125,7 +125,7 @@ export const ToolEditor: React.FC<ToolEditorProps> = ({ tool, onSave, onCancel }
                       <select
                         value={formData.language}
                         onChange={(e) => setFormData({ ...formData, language: e.target.value as any })}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none appearance-none"
+                        className="w-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none appearance-none"
                       >
                         <option value="javascript">JavaScript (Live)</option>
                         <option value="python">Python (Target)</option>
@@ -142,7 +142,7 @@ export const ToolEditor: React.FC<ToolEditorProps> = ({ tool, onSave, onCancel }
                     value={formData.className}
                     onChange={(e) => setFormData({ ...formData, className: e.target.value.replace(/\s+/g, '') })}
                     placeholder="e.g. GitHubClient"
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 focus:ring-1 focus:ring-indigo-500 outline-none mono text-indigo-400 text-sm"
+                    className="w-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-lg px-4 py-2 focus:ring-1 focus:ring-indigo-500 outline-none mono text-indigo-600 dark:text-indigo-400 text-sm"
                   />
                 </div>
                 <div>
@@ -152,15 +152,15 @@ export const ToolEditor: React.FC<ToolEditorProps> = ({ tool, onSave, onCancel }
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     placeholder="Explain what this tool does so the AI knows when to use it..."
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none resize-none"
+                    className="w-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none resize-none"
                   />
                 </div>
               </div>
             </div>
 
             <div className="space-y-4">
-              <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-800 pb-2">Interface Signature (JSON Schema)</h3>
-              <div className="bg-[#0c0c0e] border border-zinc-800 rounded-lg p-1 min-h-[220px] flex flex-col overflow-hidden">
+              <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-200 dark:border-zinc-800 pb-2">Interface Signature (JSON Schema)</h3>
+              <div className="bg-zinc-50 dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-lg p-1 min-h-[220px] flex flex-col overflow-hidden">
                 <textarea
                   value={JSON.stringify(formData.parameters, null, 2)}
                   onChange={(e) => {
@@ -169,10 +169,10 @@ export const ToolEditor: React.FC<ToolEditorProps> = ({ tool, onSave, onCancel }
                       setFormData({ ...formData, parameters: params });
                     } catch (err) {}
                   }}
-                  className="w-full flex-1 bg-transparent p-4 text-xs mono text-zinc-400 focus:outline-none scrollbar-thin resize-none"
+                  className="w-full flex-1 bg-transparent p-4 text-xs mono text-zinc-600 dark:text-zinc-400 focus:outline-none scrollbar-thin resize-none"
                   spellCheck={false}
                 />
-                <div className="bg-zinc-900/50 p-2 text-[9px] text-zinc-600 font-bold flex items-center gap-2 uppercase tracking-tight">
+                <div className="bg-zinc-100 dark:bg-zinc-900/50 p-2 text-[9px] text-zinc-500 dark:text-zinc-600 font-bold flex items-center gap-2 uppercase tracking-tight">
                   <Info className="w-3.5 h-3.5 text-indigo-500" /> Define properties the model must provide.
                 </div>
               </div>
@@ -180,7 +180,7 @@ export const ToolEditor: React.FC<ToolEditorProps> = ({ tool, onSave, onCancel }
           </div>
 
           <div className="space-y-4">
-            <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-800 pb-2 flex items-center justify-between">
+            <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-200 dark:border-zinc-800 pb-2 flex items-center justify-between">
               <div className="flex items-center gap-2"><Code className="w-4 h-4" /> Implementation Source</div>
               <div className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 ${getLanguageColor(formData.language)}`}>
                 <div className={`w-1.5 h-1.5 rounded-full bg-current ${formData.language === 'javascript' ? 'animate-pulse' : ''}`} />
@@ -189,14 +189,14 @@ export const ToolEditor: React.FC<ToolEditorProps> = ({ tool, onSave, onCancel }
             </h3>
             
             {formData.language !== 'javascript' && (
-              <div className="bg-blue-900/10 border border-blue-900/30 p-3 rounded-lg flex items-center gap-3 text-blue-400 text-xs animate-in slide-in-from-left-2">
+              <div className="bg-blue-100/50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-900/30 p-3 rounded-lg flex items-center gap-3 text-blue-700 dark:text-blue-400 text-xs animate-in slide-in-from-left-2">
                 <Globe className="w-4 h-4 shrink-0" />
                 <p><strong>Note:</strong> Your browser executes JavaScript natively. {formData.language} code is stored and passed to agents, but testing below will return simulated output.</p>
               </div>
             )}
 
-            <div className="bg-[#0c0c0e] border border-zinc-800 rounded-xl overflow-hidden shadow-2xl relative group">
-              <div className="bg-zinc-900/80 px-4 py-2 border-b border-zinc-800 flex items-center justify-between">
+            <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-2xl relative group">
+              <div className="bg-zinc-100/80 dark:bg-zinc-900/80 px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
                 <span className="text-[10px] text-zinc-500 font-mono">
                   {formData.language === 'javascript' ? 'main.js' : formData.language === 'python' ? 'main.py' : 'Main.java'}
                 </span>
@@ -204,15 +204,15 @@ export const ToolEditor: React.FC<ToolEditorProps> = ({ tool, onSave, onCancel }
               <textarea
                 value={formData.code}
                 onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                className="w-full min-h-[400px] bg-transparent p-6 text-sm mono text-indigo-100 focus:outline-none resize-y scrollbar-thin"
+                className="w-full min-h-[400px] bg-transparent p-6 text-sm mono text-indigo-800 dark:text-indigo-100 focus:outline-none resize-y scrollbar-thin"
                 spellCheck={false}
               />
             </div>
           </div>
         </div>
 
-        <div className="w-96 border-l border-zinc-800 bg-[#0c0c0e]/30 flex flex-col">
-          <header className="p-6 border-b border-zinc-800 bg-zinc-900/20">
+        <div className="w-96 border-l border-zinc-200 dark:border-zinc-800 bg-white/30 dark:bg-[#0c0c0e]/30 flex flex-col">
+          <header className="p-6 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/20">
             <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
               <Terminal className="w-4 h-4" /> Run & Debug
             </h3>
@@ -224,7 +224,7 @@ export const ToolEditor: React.FC<ToolEditorProps> = ({ tool, onSave, onCancel }
               <textarea
                 value={testArgs}
                 onChange={(e) => setTestArgs(e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-4 text-xs mono text-zinc-300 min-h-[140px] focus:ring-1 focus:ring-indigo-500 outline-none scrollbar-thin"
+                className="w-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-lg p-4 text-xs mono text-zinc-800 dark:text-zinc-300 min-h-[140px] focus:ring-1 focus:ring-indigo-500 outline-none scrollbar-thin"
                 placeholder="{}"
                 spellCheck={false}
               />
@@ -234,7 +234,7 @@ export const ToolEditor: React.FC<ToolEditorProps> = ({ tool, onSave, onCancel }
               onClick={runTest}
               disabled={isTesting}
               className={`w-full py-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
-                isTesting ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20'
+                isTesting ? 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20'
               }`}
             >
               {isTesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-current" />}
@@ -243,18 +243,18 @@ export const ToolEditor: React.FC<ToolEditorProps> = ({ tool, onSave, onCancel }
 
             <div className="space-y-4">
               <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Execution Response</label>
-              <div className="min-h-[250px] bg-black/40 border border-zinc-800 rounded-xl p-5 font-mono text-[11px] overflow-auto scrollbar-thin ring-1 ring-white/5 shadow-inner">
+              <div className="min-h-[250px] bg-zinc-100 dark:bg-black/40 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 font-mono text-[11px] overflow-auto scrollbar-thin ring-1 ring-black/5 dark:ring-white/5 shadow-inner">
                 {testError ? (
-                  <div className="text-red-400 flex items-start gap-2 bg-red-900/10 p-3 rounded-lg border border-red-900/20">
+                  <div className="text-red-600 dark:text-red-400 flex items-start gap-2 bg-red-100/50 dark:bg-red-900/10 p-3 rounded-lg border border-red-200 dark:border-red-900/20">
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                     <span className="leading-relaxed">Runtime Error: {testError}</span>
                   </div>
                 ) : testResult !== null ? (
-                  <pre className={`whitespace-pre-wrap leading-relaxed ${formData.language === 'javascript' ? 'text-emerald-400' : 'text-blue-300'}`}>
+                  <pre className={`whitespace-pre-wrap leading-relaxed ${formData.language === 'javascript' ? 'text-emerald-700 dark:text-emerald-400' : 'text-blue-700 dark:text-blue-300'}`}>
                     {JSON.stringify(testResult, null, 2)}
                   </pre>
                 ) : (
-                  <div className="h-full flex flex-col items-center justify-center opacity-20 grayscale py-12">
+                  <div className="h-full flex flex-col items-center justify-center opacity-20 grayscale py-12 text-zinc-500">
                     <Terminal className="w-8 h-8 mb-2" />
                     <span className="text-[10px] uppercase font-bold tracking-widest">Awaiting Call</span>
                   </div>

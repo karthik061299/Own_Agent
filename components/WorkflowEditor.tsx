@@ -59,12 +59,12 @@ const ManagerSlider: React.FC<{
   <div className="space-y-2">
     <div className="flex justify-between items-center text-[10px] uppercase font-bold text-zinc-500">
       <span>{label}</span>
-      <span className="text-indigo-400 mono">{(value ?? 0).toFixed(2)}</span>
+      <span className="text-indigo-600 dark:text-indigo-400 mono">{(value ?? 0).toFixed(2)}</span>
     </div>
     <input 
       type="range" min={min} max={max} step={step} value={value ?? 0} 
       onChange={(e) => onChange(parseFloat(e.target.value))}
-      className="w-full h-1 bg-zinc-800 rounded-lg appearance-none accent-indigo-500 cursor-pointer"
+      className="w-full h-1 bg-zinc-300 dark:bg-zinc-800 rounded-lg appearance-none accent-indigo-500 cursor-pointer"
     />
   </div>
 );
@@ -230,16 +230,16 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
   const domains = Array.from(new Set(agents.map(a => a.domain))).sort();
 
   return (
-    <div className="h-full flex flex-col bg-[#09090b]">
-      <header className="p-6 border-b border-zinc-800 flex justify-between items-center bg-[#0c0c0e]">
+    <div className="h-full flex flex-col bg-zinc-100 dark:bg-[#09090b]">
+      <header className="p-6 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center bg-white dark:bg-[#0c0c0e]">
         <div className="flex items-center gap-4">
           <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
             <Zap className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-zinc-100">{formData.metadata.name || 'New Workflow'}</h2>
+            <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">{formData.metadata.name || 'New Workflow'}</h2>
             <div className="flex items-center gap-2 text-xs text-zinc-500">
-              <span className={`font-bold uppercase tracking-tighter ${validation.valid ? 'text-indigo-400' : 'text-amber-500'}`}>
+              <span className={`font-bold uppercase tracking-tighter ${validation.valid ? 'text-indigo-600 dark:text-indigo-400' : 'text-amber-600 dark:text-amber-500'}`}>
                 {formData.metadata.type.replace(/_/g, ' ')} {validation.valid ? '• VALID' : '• INVALID'}
               </span>
               <span>•</span>
@@ -250,9 +250,9 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
 
         {!validation.valid && (
           <div className="flex-1 px-8 animate-in fade-in slide-in-from-top-1">
-            <div className="bg-amber-900/10 border border-amber-900/30 rounded-lg px-4 py-2 flex items-center gap-3">
-              <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
-              <p className="text-[11px] text-amber-200/80 font-medium leading-tight line-clamp-1">
+            <div className="bg-amber-100 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 rounded-lg px-4 py-2 flex items-center gap-3">
+              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-500 shrink-0" />
+              <p className="text-[11px] text-amber-800 dark:text-amber-200/80 font-medium leading-tight line-clamp-1">
                 {validation.message}
               </p>
             </div>
@@ -262,20 +262,20 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
         <div className="flex gap-3">
           <button 
             onClick={() => setIsResetConfirmVisible(true)} 
-            className="flex items-center gap-2 px-4 py-2 text-zinc-400 hover:text-red-400 transition-colors text-sm font-medium"
+            className="flex items-center gap-2 px-4 py-2 text-zinc-600 dark:text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors text-sm font-medium"
             title="Clear all agents and connections"
           >
             <RotateCcw className="w-4 h-4" /> Reset Graph
           </button>
-          <div className="w-px h-8 bg-zinc-800 my-auto mx-1" />
-          <button onClick={onCancel} className="px-4 py-2 text-zinc-400 hover:text-zinc-100 transition-colors text-sm font-medium">Cancel</button>
+          <div className="w-px h-8 bg-zinc-200 dark:bg-zinc-800 my-auto mx-1" />
+          <button onClick={onCancel} className="px-4 py-2 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors text-sm font-medium">Cancel</button>
           <button 
             onClick={() => onSave(formData)} 
             disabled={!validation.valid}
             className={`flex items-center gap-2 px-6 py-2 rounded-lg transition-all font-semibold shadow-lg ${
               validation.valid 
                 ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20 cursor-pointer' 
-                : 'bg-zinc-800 text-zinc-500 cursor-not-allowed grayscale'
+                : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500 cursor-not-allowed grayscale'
             }`}
           >
             <Save className="w-4 h-4" /> Save Workflow
@@ -284,17 +284,17 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        <div className="w-80 border-r border-zinc-800 bg-[#0c0c0e]/50 flex flex-col">
+        <div className="w-80 border-r border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-[#0c0c0e]/50 flex flex-col">
           <div className="p-6 space-y-8 overflow-y-auto scrollbar-thin">
             <section className="space-y-4">
-               <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-800 pb-2">Configuration</h3>
+               <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-200 dark:border-zinc-800 pb-2">Configuration</h3>
                <div className="space-y-3">
                  <div>
                     <label className="block text-[10px] font-bold text-zinc-500 uppercase mb-1">Workflow Name</label>
                     <input 
                       type="text" placeholder="Enter name..." value={formData.metadata.name}
                       onChange={(e) => setFormData({ ...formData, metadata: { ...formData.metadata, name: e.target.value }})}
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
+                      className="w-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
                     />
                  </div>
                  <div>
@@ -302,7 +302,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
                     <textarea 
                       placeholder="Workflow goal..." rows={2} value={formData.metadata.description}
                       onChange={(e) => setFormData({ ...formData, metadata: { ...formData.metadata, description: e.target.value }})}
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none resize-none"
+                      className="w-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none resize-none"
                     />
                  </div>
                  <div>
@@ -310,7 +310,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
                     <select 
                       value={formData.metadata.type} 
                       onChange={(e) => setFormData({ ...formData, metadata: { ...formData.metadata, type: e.target.value as any }})}
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-sm outline-none"
+                      className="w-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded px-3 py-2 text-sm outline-none"
                     >
                       <option value={WorkflowType.SEQUENTIAL}>Sequential</option>
                       <option value={WorkflowType.CIRCULAR}>Circular</option>
@@ -322,15 +322,15 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
                </div>
 
                {formData.metadata.type === WorkflowType.CIRCULAR && !formData.metadata.useManager && (
-                 <div className="flex gap-3 p-3 rounded-lg bg-amber-900/20 border border-amber-900/30 text-amber-400 text-[10px] leading-relaxed animate-in fade-in zoom-in duration-300">
+                 <div className="flex gap-3 p-3 rounded-lg bg-amber-100 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 text-amber-700 dark:text-amber-400 text-[10px] leading-relaxed animate-in fade-in zoom-in duration-300">
                    <AlertCircle className="w-4 h-4 shrink-0" />
                    <p><strong>Manager required</strong> to avoid infinite loops.</p>
                  </div>
                )}
 
-               <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-lg space-y-4">
+               <div className="p-4 bg-zinc-100 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg space-y-4">
                   <div className="flex items-center justify-between">
-                    <label htmlFor="mgr" className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Manager LLM</label>
+                    <label htmlFor="mgr" className="text-xs font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider">Manager LLM</label>
                     <input 
                       id="mgr" type="checkbox" checked={formData.metadata.useManager} 
                       onChange={(e) => setFormData({ ...formData, metadata: { ...formData.metadata, useManager: e.target.checked }})}
@@ -338,13 +338,13 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
                     />
                   </div>
                   {formData.metadata.useManager && (
-                    <div className="space-y-4 pt-2 border-t border-zinc-800">
+                    <div className="space-y-4 pt-2 border-t border-zinc-200 dark:border-zinc-800">
                       <div>
                         <label className="block text-[9px] font-bold text-zinc-500 uppercase mb-1">Manager Model</label>
                         <select 
                           value={formData.metadata.managerModel} 
                           onChange={(e) => setFormData({ ...formData, metadata: { ...formData.metadata, managerModel: e.target.value }})}
-                          className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-[10px] text-zinc-200"
+                          className="w-full bg-zinc-200 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-1.5 text-[10px] text-zinc-800 dark:text-zinc-200"
                         >
                           {models.filter(m => m.is_active).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                         </select>
@@ -363,18 +363,18 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
             </section>
 
             <section className="space-y-4">
-              <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-800 pb-2">Agents</h3>
+              <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-200 dark:border-zinc-800 pb-2">Agents</h3>
               <div className="space-y-3">
                 <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500" />
                   <input 
                     type="text" placeholder="Search..." value={agentSearch} onChange={(e) => setAgentSearch(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-indigo-500"
+                    className="w-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-lg pl-9 pr-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
                 <select 
                   value={agentDomainFilter} onChange={(e) => setAgentDomainFilter(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-[11px] outline-none"
+                  className="w-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-lg px-3 py-1.5 text-[11px] outline-none"
                 >
                   <option value="">All Domains</option>
                   {domains.map(d => <option key={d} value={d}>{d}</option>)}
@@ -389,11 +389,11 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
                         e.dataTransfer.setData('agentId', agent.id);
                         e.dataTransfer.effectAllowed = 'move';
                       }}
-                      className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg hover:border-indigo-500/50 cursor-grab active:cursor-grabbing group transition-all"
+                      className="p-3 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg hover:border-indigo-500/50 cursor-grab active:cursor-grabbing group transition-all"
                     >
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-[11px] font-bold text-zinc-200 group-hover:text-indigo-400 transition-colors">{agent.name}</span>
-                        <GripVertical className="w-3.5 h-3.5 text-zinc-700 group-hover:text-zinc-500" />
+                        <span className="text-[11px] font-bold text-zinc-800 dark:text-zinc-200 group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors">{agent.name}</span>
+                        <GripVertical className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-700 group-hover:text-zinc-500" />
                       </div>
                       <div className="text-[9px] text-zinc-500 line-clamp-1">{agent.description}</div>
                     </div>
@@ -406,7 +406,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
 
         <div 
           ref={canvasRef}
-          className="flex-1 bg-[radial-gradient(#18181b_1px,transparent_1px)] bg-[size:32px_32px] relative overflow-auto scrollbar-thin"
+          className="flex-1 bg-[radial-gradient(#e4e4e7_1px,transparent_1px)] dark:bg-[radial-gradient(#18181b_1px,transparent_1px)] bg-[size:32px_32px] relative overflow-auto scrollbar-thin"
           onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
           onDrop={(e) => {
             e.preventDefault();
@@ -446,7 +446,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
               if (!data) return null;
               return (
                 <div key={`btn-${edge.id}`} style={{ position: 'absolute', left: data.midX, top: data.midY, transform: 'translate(-50%, -50%)' }}>
-                  <button onClick={() => toggleHumanCheckpoint(edge.id)} className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all duration-200 shadow-xl ${edge.humanCheckpoint ? 'bg-teal-500 border-teal-400 text-white' : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:bg-zinc-700'}`} title="Toggle Human Checkpoint"><UserCheck className="w-4 h-4" /></button>
+                  <button onClick={() => toggleHumanCheckpoint(edge.id)} className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all duration-200 shadow-xl ${edge.humanCheckpoint ? 'bg-teal-500 border-teal-400 text-white' : 'bg-zinc-100 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700'}`} title="Toggle Human Checkpoint"><UserCheck className="w-4 h-4" /></button>
                 </div>
               );
             })}
@@ -457,33 +457,33 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
             const isConnStart = connStartNodeId === node.id;
             
             return (
-              <div key={node.id} className={`absolute w-64 bg-[#121214] border-2 rounded-xl shadow-2xl transition-all group ${isConnStart ? 'border-indigo-500 ring-4 ring-indigo-500/20 z-20' : 'border-zinc-800 hover:border-zinc-600 z-10'}`} style={{ left: node.position.x, top: node.position.y }}>
-                <div className="absolute -top-3 -left-3 w-7 h-7 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[11px] font-bold border-2 border-[#09090b] shadow-lg z-30">{idx + 1}</div>
+              <div key={node.id} className={`absolute w-64 bg-white dark:bg-[#121214] border-2 rounded-xl shadow-2xl transition-all group ${isConnStart ? 'border-indigo-500 ring-4 ring-indigo-500/20 z-20' : 'border-zinc-300 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 z-10'}`} style={{ left: node.position.x, top: node.position.y }}>
+                <div className={`absolute -top-3 -left-3 w-7 h-7 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[11px] font-bold border-2 border-zinc-100 dark:border-[#09090b] shadow-lg z-30`}>{idx + 1}</div>
                 <div className="p-4 cursor-move select-none" onMouseDown={(e) => { if (!(e.target as HTMLElement).closest('button')) setDraggingNodeId(node.id); }}>
                   <div className="flex justify-between items-start mb-3">
-                    <div className="w-8 h-8 bg-zinc-800 rounded flex items-center justify-center"><User className="w-4 h-4 text-indigo-400" /></div>
-                    <div className="flex items-center gap-1"><button onClick={() => agent && onEditAgent(agent)} className="p-1 text-zinc-600 hover:text-indigo-400 transition-colors"><Edit2 className="w-4 h-4" /></button><button onClick={() => removeNode(node.id)} className="p-1 text-zinc-600 hover:text-red-400 transition-colors"><X className="w-4 h-4" /></button></div>
+                    <div className="w-8 h-8 bg-zinc-100 dark:bg-zinc-800 rounded flex items-center justify-center"><User className="w-4 h-4 text-indigo-500 dark:text-indigo-400" /></div>
+                    <div className="flex items-center gap-1"><button onClick={() => agent && onEditAgent(agent)} className="p-1 text-zinc-500 dark:text-zinc-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"><Edit2 className="w-4 h-4" /></button><button onClick={() => removeNode(node.id)} className="p-1 text-zinc-500 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"><X className="w-4 h-4" /></button></div>
                   </div>
-                  <h4 className="font-bold text-zinc-100 text-sm mb-1 truncate">{agent?.name}</h4>
+                  <h4 className="font-bold text-zinc-900 dark:text-zinc-100 text-sm mb-1 truncate">{agent?.name}</h4>
                   <p className="text-[10px] text-zinc-500 line-clamp-2 mb-3 leading-relaxed">{agent?.description}</p>
-                  <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-zinc-900 border border-zinc-800 mb-4"><Cpu className="w-3 h-3 text-indigo-500" /><span className="text-[9px] font-medium text-zinc-400 truncate">{agent?.config.model}</span></div>
+                  <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 mb-4"><Cpu className="w-3 h-3 text-indigo-600 dark:text-indigo-500" /><span className="text-[9px] font-medium text-zinc-600 dark:text-zinc-400 truncate">{agent?.config.model}</span></div>
                   <div className="flex gap-2">
-                     <button onClick={() => { if (connStartNodeId && connStartNodeId !== node.id) tryConnect(connStartNodeId, node.id); else setConnStartNodeId(node.id); }} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all shadow-lg ${isConnStart ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}>{isConnStart ? 'Select Target' : 'Connect'}{!isConnStart && <ArrowRight className="w-3 h-3" />}</button>
-                     {isConnStart && (<button onClick={() => setConnStartNodeId(null)} className="px-3 py-2 bg-zinc-700 text-zinc-300 rounded-lg text-[10px] font-bold">CANCEL</button>)}
+                     <button onClick={() => { if (connStartNodeId && connStartNodeId !== node.id) tryConnect(connStartNodeId, node.id); else setConnStartNodeId(node.id); }} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all shadow-lg ${isConnStart ? 'bg-indigo-600 text-white' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-400 hover:bg-zinc-300 dark:hover:bg-zinc-700'}`}>{isConnStart ? 'Select Target' : 'Connect'}{!isConnStart && <ArrowRight className="w-3 h-3" />}</button>
+                     {isConnStart && (<button onClick={() => setConnStartNodeId(null)} className="px-3 py-2 bg-zinc-600 dark:bg-zinc-700 text-zinc-100 dark:text-zinc-300 rounded-lg text-[10px] font-bold">CANCEL</button>)}
                   </div>
                 </div>
-                <div className="px-4 py-2 bg-zinc-900/50 border-t border-zinc-800 flex justify-between items-center text-[9px] text-zinc-600 font-bold uppercase"><span>In: {formData.edges.filter(e => e.target === node.id).length}</span><span>Out: {formData.edges.filter(e => e.source === node.id).length}</span></div>
+                <div className="px-4 py-2 bg-zinc-100/50 dark:bg-zinc-900/50 border-t border-zinc-200 dark:border-zinc-800 flex justify-between items-center text-[9px] text-zinc-500 dark:text-zinc-600 font-bold uppercase"><span>In: {formData.edges.filter(e => e.target === node.id).length}</span><span>Out: {formData.edges.filter(e => e.source === node.id).length}</span></div>
               </div>
             );
           })}
         </div>
         {isResetConfirmVisible && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-[#0c0c0e] border border-zinc-800 p-8 rounded-3xl max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
-              <div className="flex items-center gap-4 text-amber-500 mb-6"><div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/20"><AlertCircle className="w-6 h-6" /></div><h3 className="text-lg font-bold text-zinc-100">Reset Graph?</h3></div>
-              <p className="text-sm text-zinc-400 leading-relaxed mb-8">This will clear all agents and connections from the canvas. This action cannot be undone.</p>
-              <div className="flex gap-3"><button onClick={() => setIsResetConfirmVisible(false)} className="flex-1 px-4 py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-xl font-bold text-xs transition-all border border-zinc-800">Cancel</button><button onClick={handleConfirmReset} className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold text-xs transition-all shadow-lg shadow-red-600/20">Confirm Reset</button></div>
-              <button onClick={() => setIsResetConfirmVisible(false)} className="absolute top-4 right-4 text-zinc-600 hover:text-zinc-300 transition-colors"><X className="w-5 h-5" /></button>
+            <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 p-8 rounded-3xl max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+              <div className="flex items-center gap-4 text-amber-500 mb-6"><div className="w-12 h-12 bg-amber-100 dark:bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-200 dark:border-amber-500/20"><AlertCircle className="w-6 h-6" /></div><h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">Reset Graph?</h3></div>
+              <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed mb-8">This will clear all agents and connections from the canvas. This action cannot be undone.</p>
+              <div className="flex gap-3"><button onClick={() => setIsResetConfirmVisible(false)} className="flex-1 px-4 py-3 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-300 rounded-xl font-bold text-xs transition-all border border-zinc-200 dark:border-zinc-800">Cancel</button><button onClick={handleConfirmReset} className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold text-xs transition-all shadow-lg shadow-red-600/20">Confirm Reset</button></div>
+              <button onClick={() => setIsResetConfirmVisible(false)} className="absolute top-4 right-4 text-zinc-500 dark:text-zinc-600 hover:text-zinc-800 dark:hover:text-zinc-300 transition-colors"><X className="w-5 h-5" /></button>
             </div>
           </div>
         )}

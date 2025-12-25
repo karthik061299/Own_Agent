@@ -11,6 +11,7 @@ import { ToolEditor } from './components/ToolEditor';
 import { ChatInterface } from './components/ChatInterface';
 import { AgentTestView } from './components/AgentTestView';
 import { AgentCompareView } from './components/AgentCompareView';
+import { SettingsView } from './components/SettingsView';
 import { Agent, Workflow, Tool } from './types';
 import { dbService } from './services/db';
 import { Users, GitBranch, Play, Loader2, PanelRight, Hammer, MessageSquare, AlertCircle, X, Settings } from 'lucide-react';
@@ -33,6 +34,15 @@ const App: React.FC = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [deletionTarget, setDeletionTarget] = useState<{ type: 'agent' | 'workflow' | 'tool', id: string, name: string } | null>(null);
   const [navigationSource, setNavigationSource] = useState<{ view: AppView, data: any } | null>(null);
+
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
+
+  useEffect(() => {
+    const root = window.document.documentElement;
+    const isDark = theme === 'dark';
+    root.classList.toggle('dark', isDark);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   useEffect(() => {
     const init = async () => {
@@ -244,6 +254,8 @@ const App: React.FC = () => {
         return <ExecutionPanel workflows={workflows} agents={agents} tools={tools} />;
       case 'chat':
         return <ChatInterface />;
+      case 'settings':
+        return <SettingsView currentTheme={theme} onThemeChange={(t) => setTheme(t)} />;
       default:
         return <AgentList agents={agents} tools={tools} onEdit={handleEditAgent} onDelete={handleDeleteAgent} onCreate={handleCreateAgent} />;
     }
@@ -251,9 +263,9 @@ const App: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="h-screen w-full bg-[#09090b] flex flex-col items-center justify-center gap-4">
+      <div className="h-screen w-full bg-zinc-50 dark:bg-[#09090b] flex flex-col items-center justify-center gap-4">
         <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
-        <p className="text-zinc-500 font-medium animate-pulse uppercase tracking-widest text-xs">Accessing System Registry...</p>
+        <p className="text-zinc-500 dark:text-zinc-500 font-medium animate-pulse uppercase tracking-widest text-xs">Accessing System Registry...</p>
       </div>
     );
   }
@@ -261,7 +273,7 @@ const App: React.FC = () => {
   const activeTab = activeView.includes('agent') ? 'agents' : activeView.includes('workflow') ? 'workflows' : activeView.includes('tool') ? 'tools' : activeView;
 
   return (
-    <div className="flex h-screen w-full bg-[#09090b] text-zinc-100 overflow-hidden relative">
+    <div className="flex h-screen w-full bg-zinc-50 dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 overflow-hidden relative">
       <Sidebar 
         activeTab={activeTab} 
         onTabChange={(tab) => navigateTo(tab as AppView)}
@@ -270,16 +282,19 @@ const App: React.FC = () => {
       />
       
       {isSidebarCollapsed && (
-        <div className="w-14 border-r border-zinc-800 bg-[#0c0c0e] flex flex-col items-center py-6 gap-6 z-50 transition-all">
-          <button onClick={() => setIsSidebarCollapsed(false)} className="p-2 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 rounded-lg border border-indigo-600/20 transition-all shadow-lg" title="Expand Navigation">
+        <div className="w-14 border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#0c0c0e] flex flex-col items-center py-6 gap-6 z-50 transition-all">
+          <button onClick={() => setIsSidebarCollapsed(false)} className="p-2 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-500 dark:text-indigo-400 rounded-lg border border-indigo-600/20 transition-all shadow-lg" title="Expand Navigation">
             <PanelRight className="w-5 h-5" />
           </button>
           <div className="flex flex-col gap-4">
-            <button onClick={() => navigateTo('agentList')} className={`p-2 rounded-lg transition-all ${activeTab === 'agents' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-600 hover:text-zinc-400'}`}><Users className="w-5 h-5" /></button>
-            <button onClick={() => navigateTo('workflowList')} className={`p-2 rounded-lg transition-all ${activeTab === 'workflows' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-600 hover:text-zinc-400'}`}><GitBranch className="w-5 h-5" /></button>
-            <button onClick={() => navigateTo('toolList')} className={`p-2 rounded-lg transition-all ${activeTab === 'tools' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-600 hover:text-zinc-400'}`}><Hammer className="w-5 h-5" /></button>
-            <button onClick={() => navigateTo('execution')} className={`p-2 rounded-lg transition-all ${activeTab === 'execution' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-600 hover:text-zinc-400'}`}><Play className="w-5 h-5" /></button>
-            <button onClick={() => navigateTo('chat')} className={`p-2 rounded-lg transition-all ${activeTab === 'chat' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-600 hover:text-zinc-400'}`}><MessageSquare className="w-5 h-5" /></button>
+            <button onClick={() => navigateTo('agentList')} className={`p-2 rounded-lg transition-all ${activeTab === 'agents' ? 'bg-zinc-200 dark:bg-zinc-800 text-indigo-500 dark:text-indigo-400' : 'text-zinc-500 dark:text-zinc-600 hover:text-zinc-900 dark:hover:text-zinc-400'}`}><Users className="w-5 h-5" /></button>
+            <button onClick={() => navigateTo('workflowList')} className={`p-2 rounded-lg transition-all ${activeTab === 'workflows' ? 'bg-zinc-200 dark:bg-zinc-800 text-indigo-500 dark:text-indigo-400' : 'text-zinc-500 dark:text-zinc-600 hover:text-zinc-900 dark:hover:text-zinc-400'}`}><GitBranch className="w-5 h-5" /></button>
+            <button onClick={() => navigateTo('toolList')} className={`p-2 rounded-lg transition-all ${activeTab === 'tools' ? 'bg-zinc-200 dark:bg-zinc-800 text-indigo-500 dark:text-indigo-400' : 'text-zinc-500 dark:text-zinc-600 hover:text-zinc-900 dark:hover:text-zinc-400'}`}><Hammer className="w-5 h-5" /></button>
+            <button onClick={() => navigateTo('execution')} className={`p-2 rounded-lg transition-all ${activeTab === 'execution' ? 'bg-zinc-200 dark:bg-zinc-800 text-indigo-500 dark:text-indigo-400' : 'text-zinc-500 dark:text-zinc-600 hover:text-zinc-900 dark:hover:text-zinc-400'}`}><Play className="w-5 h-5" /></button>
+            <button onClick={() => navigateTo('chat')} className={`p-2 rounded-lg transition-all ${activeTab === 'chat' ? 'bg-zinc-200 dark:bg-zinc-800 text-indigo-500 dark:text-indigo-400' : 'text-zinc-500 dark:text-zinc-600 hover:text-zinc-900 dark:hover:text-zinc-400'}`}><MessageSquare className="w-5 h-5" /></button>
+          </div>
+          <div className="mt-auto">
+            <button onClick={() => navigateTo('settings')} className={`p-2 rounded-lg transition-all ${activeTab === 'settings' ? 'bg-zinc-200 dark:bg-zinc-800 text-indigo-500 dark:text-indigo-400' : 'text-zinc-500 dark:text-zinc-600 hover:text-zinc-900 dark:hover:text-zinc-400'}`}><Settings className="w-5 h-5" /></button>
           </div>
         </div>
       )}
@@ -290,17 +305,17 @@ const App: React.FC = () => {
 
       {deletionTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-[#0c0c0e] border border-zinc-800 p-8 rounded-3xl max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 p-8 rounded-3xl max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex items-center gap-4 text-amber-500 mb-6">
               <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/20"><AlertCircle className="w-6 h-6" /></div>
-              <h3 className="text-lg font-bold text-zinc-100">Confirm Deletion</h3>
+              <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">Confirm Deletion</h3>
             </div>
-            <p className="text-sm text-zinc-400 leading-relaxed mb-8">Are you sure you want to permanently delete the {deletionTarget.type} <strong className="text-indigo-400">"{deletionTarget.name}"</strong>? This action cannot be undone.</p>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed mb-8">Are you sure you want to permanently delete the {deletionTarget.type} <strong className="text-indigo-600 dark:text-indigo-400">"{deletionTarget.name}"</strong>? This action cannot be undone.</p>
             <div className="flex gap-3">
-              <button onClick={() => setDeletionTarget(null)} className="flex-1 px-4 py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-xl font-bold text-xs transition-all border border-zinc-800">Cancel</button>
+              <button onClick={() => setDeletionTarget(null)} className="flex-1 px-4 py-3 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-300 rounded-xl font-bold text-xs transition-all border border-zinc-200 dark:border-zinc-800">Cancel</button>
               <button onClick={handleConfirmDelete} className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold text-xs transition-all shadow-lg shadow-red-600/20">Delete</button>
             </div>
-            <button onClick={() => setDeletionTarget(null)} className="absolute top-4 right-4 text-zinc-600 hover:text-zinc-300 transition-colors"><X className="w-5 h-5" /></button>
+            <button onClick={() => setDeletionTarget(null)} className="absolute top-4 right-4 text-zinc-500 dark:text-zinc-600 hover:text-zinc-800 dark:hover:text-zinc-300 transition-colors"><X className="w-5 h-5" /></button>
           </div>
         </div>
       )}

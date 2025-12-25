@@ -100,13 +100,13 @@ export const AgentTestView: React.FC<AgentTestViewProps> = ({ agent, onBack }) =
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#09090b]">
-      <header className="p-4 border-b border-zinc-800 flex justify-between items-center bg-[#0c0c0e] sticky top-0 z-10">
+    <div className="h-full flex flex-col bg-zinc-100 dark:bg-[#09090b]">
+      <header className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center bg-white dark:bg-[#0c0c0e] sticky top-0 z-10">
         <div className="flex items-center gap-4">
-          <button onClick={onBack} className="p-2 text-zinc-400 hover:text-zinc-100"><ArrowLeft className="w-5 h-5" /></button>
-          <div className="w-px h-6 bg-zinc-800" />
+          <button onClick={onBack} className="p-2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"><ArrowLeft className="w-5 h-5" /></button>
+          <div className="w-px h-6 bg-zinc-200 dark:bg-zinc-800" />
           <div>
-            <h2 className="text-lg font-bold text-zinc-100">Test Agent: {agent.name} (V{agent.version})</h2>
+            <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">Test Agent: {agent.name} (V{agent.version})</h2>
             <p className="text-xs text-zinc-500">Run an isolated test to validate agent logic and output format.</p>
           </div>
         </div>
@@ -118,22 +118,22 @@ export const AgentTestView: React.FC<AgentTestViewProps> = ({ agent, onBack }) =
 
       <div className="flex-1 flex overflow-hidden">
         {/* Input Panel */}
-        <div className="w-[450px] border-r border-zinc-800 p-6 flex flex-col gap-6 overflow-y-auto scrollbar-thin">
+        <div className="w-[450px] border-r border-zinc-200 dark:border-zinc-800 p-6 flex flex-col gap-6 overflow-y-auto scrollbar-thin">
           <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Input Parameters</h3>
           {agent.inputs.length > 0 ? (
             agent.inputs.map(input => (
               <div key={input.parameter} className="space-y-3">
                 <div>
-                  <label className="text-sm font-medium text-indigo-400 font-mono">{input.parameter}</label>
+                  <label className="text-sm font-medium text-indigo-600 dark:text-indigo-400 font-mono">{input.parameter}</label>
                   <p className="text-xs text-zinc-500">{input.description}</p>
                 </div>
 
                 {Array.isArray(inputs[input.parameter]) && (inputs[input.parameter] as File[]).length > 0 ? (
                   <div className="space-y-2">
                     {(inputs[input.parameter] as File[]).map((file, index) => (
-                      <div key={index} className="flex items-center justify-between bg-zinc-900/50 border border-zinc-800 rounded-lg p-2 text-xs">
-                        <span className="truncate text-zinc-300">{file.name}</span>
-                        <button onClick={() => handleRemoveFile(input.parameter, index)} className="p-1 text-zinc-500 hover:text-red-400"><X className="w-3 h-3"/></button>
+                      <div key={index} className="flex items-center justify-between bg-zinc-100/50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2 text-xs">
+                        <span className="truncate text-zinc-700 dark:text-zinc-300">{file.name}</span>
+                        <button onClick={() => handleRemoveFile(input.parameter, index)} className="p-1 text-zinc-500 hover:text-red-500 dark:hover:text-red-400"><X className="w-3 h-3"/></button>
                       </div>
                     ))}
                   </div>
@@ -142,11 +142,11 @@ export const AgentTestView: React.FC<AgentTestViewProps> = ({ agent, onBack }) =
                     value={typeof inputs[input.parameter] === 'string' ? (inputs[input.parameter] as string) : ''}
                     onChange={(e) => setInputs(prev => ({...prev, [input.parameter]: e.target.value}))}
                     rows={4}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-sm mono focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-y"
+                    className="w-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-lg p-3 text-sm mono focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-y"
                   />
                 )}
                  <div>
-                  <label htmlFor={`file-upload-${input.parameter}`} className="cursor-pointer flex items-center justify-center gap-2 w-full p-2 bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700/80 rounded-lg text-xs font-bold text-zinc-400 transition-colors">
+                  <label htmlFor={`file-upload-${input.parameter}`} className="cursor-pointer flex items-center justify-center gap-2 w-full p-2 bg-zinc-200/50 dark:bg-zinc-800/50 hover:bg-zinc-200 dark:hover:bg-zinc-800 border border-zinc-300/80 dark:border-zinc-700/80 rounded-lg text-xs font-bold text-zinc-500 dark:text-zinc-400 transition-colors">
                     <Upload className="w-3.5 h-3.5" /> Attach Files
                   </label>
                   <input id={`file-upload-${input.parameter}`} type="file" multiple className="hidden" onChange={(e) => handleFileChange(e, input.parameter)} />
@@ -154,7 +154,7 @@ export const AgentTestView: React.FC<AgentTestViewProps> = ({ agent, onBack }) =
               </div>
             ))
           ) : (
-            <div className="text-center text-zinc-600 text-sm py-20">This agent requires no inputs.</div>
+            <div className="text-center text-zinc-500 dark:text-zinc-600 text-sm py-20">This agent requires no inputs.</div>
           )}
         </div>
 
@@ -162,18 +162,18 @@ export const AgentTestView: React.FC<AgentTestViewProps> = ({ agent, onBack }) =
         <div className="flex-1 p-8 flex flex-col overflow-y-auto scrollbar-thin">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Agent Output</h3>
-            <button onClick={handleDownload} disabled={!output} className="flex items-center gap-2 text-xs font-bold text-indigo-400 hover:text-indigo-300 disabled:opacity-30">
+            <button onClick={handleDownload} disabled={!output} className="flex items-center gap-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 disabled:opacity-30">
               <Download className="w-3.5 h-3.5" /> Download
             </button>
           </div>
-          <div className="flex-1 bg-[#0c0c0e] border border-zinc-800 rounded-xl p-6 prose prose-sm prose-invert w-full max-w-none">
+          <div className="flex-1 bg-white dark:bg-[#0c0c0e] border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 prose prose-sm prose-invert w-full max-w-none">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center h-full text-zinc-500 gap-4">
                 <div className="relative"><Loader2 className="w-12 h-12 animate-spin text-indigo-500" /><Cpu className="w-5 h-5 text-indigo-400 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" /></div>
                 <span>Awaiting response from model...</span>
               </div>
             ) : error ? (
-              <div className="text-red-400 flex flex-col items-center justify-center h-full gap-4">
+              <div className="text-red-500 dark:text-red-400 flex flex-col items-center justify-center h-full gap-4">
                 <AlertCircle className="w-12 h-12" />
                 <div className="text-center">
                   <h4 className="font-bold mb-2">Execution Failed</h4>
@@ -183,7 +183,7 @@ export const AgentTestView: React.FC<AgentTestViewProps> = ({ agent, onBack }) =
             ) : output ? (
               <Markdown>{output}</Markdown>
             ) : (
-               <div className="flex flex-col items-center justify-center h-full text-zinc-700 gap-4">
+               <div className="flex flex-col items-center justify-center h-full text-zinc-500 dark:text-zinc-700 gap-4">
                 <FileText className="w-12 h-12" />
                 <span>Output will appear here</span>
               </div>

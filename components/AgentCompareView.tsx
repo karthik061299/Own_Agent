@@ -34,24 +34,24 @@ const ComparisonPanel: React.FC<{
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="p-4 space-y-2 overflow-y-auto scrollbar-thin border-b border-zinc-800" style={{flexBasis: '40%'}}>
+      <div className="p-4 space-y-2 overflow-y-auto scrollbar-thin border-b border-zinc-200 dark:border-zinc-800" style={{flexBasis: '40%'}}>
         {version.data.inputs.length > 0 ? version.data.inputs.map(input => (
           <div key={input.parameter} className="space-y-1">
-            <label className="text-xs font-mono text-indigo-400">{input.parameter}</label>
-            <textarea value={inputs[input.parameter] || ''} onChange={(e) => setInputs(prev => ({...prev, [input.parameter]: e.target.value}))} rows={4} className="w-full bg-zinc-950 border border-zinc-800 rounded-md p-2 text-xs mono resize-y focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+            <label className="text-xs font-mono text-indigo-600 dark:text-indigo-400">{input.parameter}</label>
+            <textarea value={inputs[input.parameter] || ''} onChange={(e) => setInputs(prev => ({...prev, [input.parameter]: e.target.value}))} rows={4} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-300 dark:border-zinc-800 rounded-md p-2 text-xs mono resize-y focus:outline-none focus:ring-1 focus:ring-indigo-500" />
           </div>
-        )) : <div className="text-center text-zinc-600 text-xs py-10">No inputs required.</div>}
+        )) : <div className="text-center text-zinc-500 dark:text-zinc-600 text-xs py-10">No inputs required.</div>}
       </div>
-      <div className="p-4 border-b border-zinc-800">
-        <button onClick={handleRun} disabled={finalIsLoading} className="w-full flex items-center justify-center gap-1 px-3 py-2 bg-zinc-800 text-xs font-bold rounded-md hover:bg-zinc-700 disabled:opacity-50">
+      <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
+        <button onClick={handleRun} disabled={finalIsLoading} className="w-full flex items-center justify-center gap-1 px-3 py-2 bg-zinc-200 dark:bg-zinc-800 text-xs font-bold rounded-md hover:bg-zinc-300 dark:hover:bg-zinc-700 disabled:opacity-50">
           {finalIsLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
           Run
         </button>
       </div>
-      <div className="flex-1 bg-black/30 p-4 overflow-y-auto scrollbar-thin">
+      <div className="flex-1 bg-zinc-100/50 dark:bg-black/30 p-4 overflow-y-auto scrollbar-thin">
         <div className="prose prose-sm prose-invert w-full max-w-none">
           {finalIsLoading ? <Loader2 className="w-6 h-6 animate-spin text-indigo-500 mx-auto mt-10" /> 
-            : error ? <div className="text-red-400 text-xs"><AlertCircle className="w-4 h-4 inline-block mr-2"/>{error}</div> 
+            : error ? <div className="text-red-500 dark:text-red-400 text-xs"><AlertCircle className="w-4 h-4 inline-block mr-2"/>{error}</div> 
             : <Markdown>{output || ''}</Markdown>}
         </div>
       </div>
@@ -103,7 +103,7 @@ export const AgentCompareView: React.FC<AgentCompareViewProps> = ({ agent, onBac
           const v = allVersions.find(av => av.version === parseInt(e.target.value));
           if (v) setter(v);
         }}
-        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none appearance-none"
+        className="w-full bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 outline-none appearance-none"
       >
         <option value="" disabled>Select a version</option>
         {allVersions.map(v => (
@@ -117,31 +117,31 @@ export const AgentCompareView: React.FC<AgentCompareViewProps> = ({ agent, onBac
   );
 
   return (
-    <div className="h-full flex flex-col bg-[#09090b]">
-      <header className="p-4 border-b border-zinc-800 flex justify-between items-center bg-[#0c0c0e] sticky top-0 z-10">
+    <div className="h-full flex flex-col bg-zinc-100 dark:bg-[#09090b]">
+      <header className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center bg-white dark:bg-[#0c0c0e] sticky top-0 z-10">
         <div className="flex items-center gap-4">
-          <button onClick={onBack} className="p-2 text-zinc-400 hover:text-zinc-100"><ArrowLeft className="w-5 h-5" /></button>
-          <div className="w-px h-6 bg-zinc-800" />
+          <button onClick={onBack} className="p-2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"><ArrowLeft className="w-5 h-5" /></button>
+          <div className="w-px h-6 bg-zinc-200 dark:bg-zinc-800" />
           <div>
-            <h2 className="text-lg font-bold text-zinc-100">Compare Versions: {agent.name}</h2>
+            <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">Compare Versions: {agent.name}</h2>
             <p className="text-xs text-zinc-500">Run two versions side-by-side to analyze behavioral changes.</p>
           </div>
         </div>
       </header>
       <div className="flex-1 flex overflow-hidden">
         {/* Left Panel */}
-        <div className="flex-1 flex flex-col border-r border-zinc-800">
-          <div className="p-4 border-b border-zinc-800">
+        <div className="flex-1 flex flex-col border-r border-zinc-200 dark:border-zinc-800">
+          <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
             {renderVersionSelector(leftVersion, setLeftVersion, rightVersion)}
           </div>
-          {leftVersion ? <ComparisonPanel version={leftVersion} onRun={(i) => runTestForVersion(leftVersion, i)} isLoading={isLoading}/> : <div className="p-8 text-center text-zinc-600">Select a version to begin.</div>}
+          {leftVersion ? <ComparisonPanel version={leftVersion} onRun={(i) => runTestForVersion(leftVersion, i)} isLoading={isLoading}/> : <div className="p-8 text-center text-zinc-500 dark:text-zinc-600">Select a version to begin.</div>}
         </div>
         {/* Right Panel */}
         <div className="flex-1 flex flex-col">
-          <div className="p-4 border-b border-zinc-800">
+          <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
             {renderVersionSelector(rightVersion, setRightVersion, leftVersion)}
           </div>
-          {rightVersion ? <ComparisonPanel version={rightVersion} onRun={(i) => runTestForVersion(rightVersion, i)} isLoading={isLoading}/> : <div className="p-8 text-center text-zinc-600">Select a version to begin.</div>}
+          {rightVersion ? <ComparisonPanel version={rightVersion} onRun={(i) => runTestForVersion(rightVersion, i)} isLoading={isLoading}/> : <div className="p-8 text-center text-zinc-500 dark:text-zinc-600">Select a version to begin.</div>}
         </div>
       </div>
     </div>
