@@ -15,6 +15,39 @@ interface WorkflowEditorProps {
   onEditAgent: (agent: Agent) => void;
 }
 
+const detectCycle = (nodes: WorkflowNode[], edges: WorkflowEdge[]): boolean => {
+  const adjacencyList = new Map<string, string[]>();
+  nodes.forEach(n => adjacencyList.set(n.id, []));
+  edges.forEach(e => {
+    if (adjacencyList.has(e.source)) {
+      adjacencyList.get(e.source)!.push(e.target);
+    }
+  });
+
+  const visited = new Set<string>();
+  const recStack = new Set<string>();
+
+  const isCyclicUtil = (v: string): boolean => {
+    if (!visited.has(v)) {
+      visited.add(v);
+      recStack.add(v);
+      for (const neighbor of adjacencyList.get(v) || []) {
+        if (!visited.has(neighbor) && isCyclicUtil(neighbor)) return true;
+        else if (recStack.has(neighbor)) return true;
+      }
+    }
+    recStack.delete(v);
+    return false;
+  };
+
+  for (const node of nodes) {
+    if (!visited.has(node.id) && isCyclicUtil(node.id)) {
+      return true;
+    }
+  }
+  return false;
+};
+
 const ManagerSlider: React.FC<{
   label: string;
   value: number;
@@ -111,6 +144,15 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
       target: targetId
     };
 
+    if (type === WorkflowType.HUMAN_IN_THE_LOOP || type === WorkflowType.SEQUENTIAL) {
+      const tempEdges = [...formData.edges, newEdge];
+      if (detectCycle(formData.nodes, tempEdges)) {
+        console.warn("Connection would create a cycle in a non-circular workflow.");
+        setConnStartNodeId(null);
+        return;
+      }
+    }
+
     setFormData(prev => ({
       ...prev,
       edges: prev.edges.some(e => e.source === sourceId && e.target === targetId) 
@@ -131,40 +173,15 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
     const { nodes, edges, metadata } = formData;
     if (nodes.length === 0) return { valid: false, message: "Add at least one agent to the workflow." };
 
-    const adjacencyList = new Map<string, string[]>();
-    nodes.forEach(n => adjacencyList.set(n.id, []));
-    edges.forEach(e => adjacencyList.get(e.source)?.push(e.target));
-
-    const hasCycle = () => {
-      const visited = new Set<string>();
-      const recStack = new Set<string>();
-      const isCyclicUtil = (v: string): boolean => {
-        if (!visited.has(v)) {
-          visited.add(v);
-          recStack.add(v);
-          for (const neighbor of adjacencyList.get(v) || []) {
-            if (!visited.has(neighbor) && isCyclicUtil(neighbor)) return true;
-            else if (recStack.has(neighbor)) return true;
-          }
-        }
-        recStack.delete(v);
-        return false;
-      };
-      for (const node of nodes) {
-        if (isCyclicUtil(node.id)) return true;
-      }
-      return false;
-    };
-
-    const cycleExists = hasCycle();
+    const cycleExists = detectCycle(nodes, edges);
 
     if (metadata.type === WorkflowType.CIRCULAR) {
       if (!cycleExists) return { valid: false, message: "Circular flow requires at least one feedback loop." };
       if (!metadata.useManager) return { valid: false, message: "Manager LLM required for Circular flows." };
     }
 
-    if (metadata.type === WorkflowType.SEQUENTIAL) {
-      if (cycleExists) return { valid: false, message: "Cycles detected. Change type to Circular." };
+    if (metadata.type === WorkflowType.SEQUENTIAL || metadata.type === WorkflowType.HUMAN_IN_THE_LOOP) {
+      if (cycleExists) return { valid: false, message: "Cycles are not allowed in this workflow type. Use Circular type for loops." };
     }
 
     if (metadata.type === WorkflowType.HUMAN_IN_THE_LOOP) {

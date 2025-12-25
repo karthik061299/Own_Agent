@@ -4,7 +4,7 @@ import { GoogleGenAI } from "@google/genai";
 import Markdown from 'markdown-to-jsx';
 import { dbService } from '../services/db';
 import { ChatMessage, ChatSession, DBModel } from '../types';
-import { Send, User, Cpu, Trash2, Loader2, Sparkles, Plus, Search, MessageSquare, History, Edit2, RotateCcw, AlertCircle, X } from 'lucide-react';
+import { Send, User, Cpu, Trash2, Loader2, Sparkles, Plus, Search, MessageSquare, History, Edit2, RotateCcw, AlertCircle, X, ChevronUp, ChevronDown, PanelLeftClose, PanelRight } from 'lucide-react';
 
 export const ChatInterface: React.FC = () => {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -17,6 +17,8 @@ export const ChatInterface: React.FC = () => {
   const [sessionSearch, setSessionSearch] = useState('');
   const [isNewChatDraft, setIsNewChatDraft] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
+  const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(false);
+  const [isHistoryPanelCollapsed, setIsHistoryPanelCollapsed] = useState(false);
   
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -214,63 +216,76 @@ export const ChatInterface: React.FC = () => {
 
   return (
     <div className="h-full flex bg-[#09090b]">
-      {/* Sessions Sidebar */}
-      <div className="w-80 border-r border-zinc-800 bg-[#0c0c0e]/30 flex flex-col">
-        <div className="p-6 border-b border-zinc-800 space-y-4">
-          <button 
-            onClick={initiateNewChat}
-            className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/10"
-          >
-            <Plus className="w-5 h-5" /> New Chat
+      {isHistoryPanelCollapsed ? (
+        <div className="w-14 border-r border-zinc-800 bg-[#0c0c0e]/30 flex flex-col items-center py-6">
+          <button onClick={() => setIsHistoryPanelCollapsed(false)} className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-all" title="Expand History">
+            <PanelRight className="w-5 h-5" />
           </button>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-            <input 
-              type="text" 
-              placeholder="Search history..." 
-              value={sessionSearch}
-              onChange={(e) => setSessionSearch(e.target.value)}
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-10 pr-4 py-2 text-xs outline-none focus:ring-1 focus:ring-indigo-500"
-            />
+        </div>
+      ) : (
+        <div className="w-80 border-r border-zinc-800 bg-[#0c0c0e]/30 flex flex-col relative transition-all duration-300">
+          <button onClick={() => setIsHistoryPanelCollapsed(true)} className="absolute top-6 -right-[14px] z-10 p-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-full border-2 border-[#09090b]" title="Collapse History">
+            <PanelLeftClose className="w-4 h-4" />
+          </button>
+          <div className="p-6 border-b border-zinc-800 space-y-4">
+            <button 
+              onClick={initiateNewChat}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/10"
+            >
+              <Plus className="w-5 h-5" /> New Chat
+            </button>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+              <input 
+                type="text" 
+                placeholder="Search history..." 
+                value={sessionSearch}
+                onChange={(e) => setSessionSearch(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-10 pr-4 py-2 text-xs outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 scrollbar-thin">
+            <button onClick={() => setIsHistoryCollapsed(p => !p)} className="w-full flex justify-between items-center text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-4 hover:text-zinc-300 transition-colors">
+              <span className="flex items-center gap-2"><History className="w-3.5 h-3.5" /> Recent Activity</span>
+              <ChevronUp className={`w-4 h-4 transition-transform ${isHistoryCollapsed ? 'rotate-180' : ''}`} />
+            </button>
+            <div className={`overflow-hidden transition-all duration-300 space-y-2 ${isHistoryCollapsed ? 'max-h-0' : 'max-h-[1000px]'}`}>
+              {filteredSessions.map(s => (
+                <div key={s.id} className="group relative">
+                  <button
+                    onClick={() => { setActiveSessionId(s.id); setIsNewChatDraft(false); }}
+                    className={`w-full p-4 rounded-xl border text-left transition-all pr-12 ${
+                      activeSessionId === s.id && !isNewChatDraft ? 'bg-indigo-600/10 border-indigo-600/40' : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
+                    }`}
+                  >
+                    <div className="text-xs font-bold truncate text-zinc-300">
+                      {s.title}
+                    </div>
+                    <div className="flex items-center justify-between text-[9px] text-zinc-500 mt-2">
+                      <span>{new Date(s.timestamp).toLocaleDateString()}</span>
+                      <span className="mono uppercase">{s.model.split('-')[1] || 'flash'}</span>
+                    </div>
+                  </button>
+                  <button 
+                    onClick={(e) => handleDeleteClick(s.id, e)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all hover:bg-zinc-800 rounded-md"
+                    title="Delete Session"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              {filteredSessions.length === 0 && (
+                <div className="py-20 text-center opacity-20 flex flex-col items-center">
+                  <MessageSquare className="w-10 h-10 mb-4" />
+                  <p className="text-xs font-bold uppercase tracking-widest">No chats found</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-thin">
-          <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-            <History className="w-3.5 h-3.5" /> Recent Activity
-          </h3>
-          {filteredSessions.map(s => (
-            <div key={s.id} className="group relative">
-              <button
-                onClick={() => { setActiveSessionId(s.id); setIsNewChatDraft(false); }}
-                className={`w-full p-4 rounded-xl border text-left transition-all pr-12 ${
-                  activeSessionId === s.id && !isNewChatDraft ? 'bg-indigo-600/10 border-indigo-600/40' : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
-                }`}
-              >
-                <div className="text-xs font-bold truncate text-zinc-300">
-                  {s.title}
-                </div>
-                <div className="flex items-center justify-between text-[9px] text-zinc-500 mt-2">
-                  <span>{new Date(s.timestamp).toLocaleDateString()}</span>
-                  <span className="mono uppercase">{s.model.split('-')[1] || 'flash'}</span>
-                </div>
-              </button>
-              <button 
-                onClick={(e) => handleDeleteClick(s.id, e)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all hover:bg-zinc-800 rounded-md"
-                title="Delete Session"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          ))}
-          {filteredSessions.length === 0 && (
-            <div className="py-20 text-center opacity-20 flex flex-col items-center">
-              <MessageSquare className="w-10 h-10 mb-4" />
-              <p className="text-xs font-bold uppercase tracking-widest">No chats found</p>
-            </div>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col overflow-hidden relative">
