@@ -28,7 +28,8 @@ export class GeminiService {
     prompt: string,
     config: Partial<AgentConfig>,
     responseMimeType?: "application/json" | "text/plain",
-    tools?: Tool[]
+    tools?: Tool[],
+    humanFeedback?: string
   ) {
     try {
       const apiKey = await this.getApiKeyForModel(model);
@@ -42,12 +43,16 @@ export class GeminiService {
         parameters: t.parameters
       }));
 
+      const finalSystemInstruction = humanFeedback
+        ? `${systemInstruction}\n\n--- IMPORTANT HUMAN FEEDBACK FOR THIS RUN ---\nYou MUST incorporate the following feedback to revise your previous output:\n${humanFeedback}`
+        : systemInstruction;
+
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: model,
         contents: prompt,
         config: {
-          systemInstruction,
+          systemInstruction: finalSystemInstruction,
           temperature: config.temperature,
           topP: config.topP,
           maxOutputTokens: maxTokens,

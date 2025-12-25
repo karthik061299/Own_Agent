@@ -3,7 +3,8 @@ export enum WorkflowType {
   SEQUENTIAL = 'SEQUENTIAL',
   PARALLEL = 'PARALLEL',
   CIRCULAR = 'CIRCULAR',
-  NON_SEQUENTIAL = 'NON_SEQUENTIAL'
+  NON_SEQUENTIAL = 'NON_SEQUENTIAL',
+  HUMAN_IN_THE_LOOP = 'HUMAN_IN_THE_LOOP'
 }
 
 export enum GeminiModel {
@@ -83,6 +84,7 @@ export interface WorkflowEdge {
   id: string;
   source: string;
   target: string;
+  humanCheckpoint?: boolean;
 }
 
 export interface Workflow {
@@ -96,7 +98,7 @@ export interface ExecutionLog {
   execution_id: string;
   timestamp: number;
   agentName: string;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'stopped';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'stopped' | 'paused';
   input: string;
   output?: string;
   error?: string;
@@ -109,7 +111,7 @@ export interface WorkflowExecution {
   id: string;
   workflow_id: string;
   workflow_name: string;
-  status: 'running' | 'completed' | 'failed' | 'stopped';
+  status: 'running' | 'completed' | 'failed' | 'stopped' | 'paused';
   timestamp: number;
   duration?: number;
 }

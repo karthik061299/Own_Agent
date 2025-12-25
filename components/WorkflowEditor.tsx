@@ -4,7 +4,7 @@ import { Workflow, Agent, WorkflowType, WorkflowNode, WorkflowEdge, DBModel } fr
 import { dbService } from '../services/db';
 import { 
   Save, X, Zap, ArrowRight, Search, Cpu, GripVertical, User, 
-  AlertCircle, CheckCircle2, RotateCcw 
+  AlertCircle, CheckCircle2, RotateCcw, UserCheck, Edit2
 } from 'lucide-react';
 
 interface WorkflowEditorProps {
@@ -12,6 +12,7 @@ interface WorkflowEditorProps {
   agents: Agent[];
   onSave: (workflow: Workflow) => void;
   onCancel: () => void;
+  onEditAgent: (agent: Agent) => void;
 }
 
 const ManagerSlider: React.FC<{
@@ -35,7 +36,7 @@ const ManagerSlider: React.FC<{
   </div>
 );
 
-export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents, onSave, onCancel }) => {
+export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents, onSave, onCancel, onEditAgent }) => {
   const [formData, setFormData] = useState<Workflow>(() => ({
     ...workflow,
     metadata: {
@@ -85,6 +86,13 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
     setIsResetConfirmVisible(false);
   };
 
+  const toggleHumanCheckpoint = (edgeId: string) => {
+    if (formData.metadata.type !== WorkflowType.HUMAN_IN_THE_LOOP) return;
+    setFormData(prev => ({
+      ...prev,
+      edges: prev.edges.map(e => e.id === edgeId ? { ...e, humanCheckpoint: !e.humanCheckpoint } : e)
+    }));
+  };
 
   const tryConnect = (sourceId: string, targetId: string) => {
     if (sourceId === targetId) return;
@@ -159,6 +167,12 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
       if (cycleExists) return { valid: false, message: "Cycles detected. Change type to Circular." };
     }
 
+    if (metadata.type === WorkflowType.HUMAN_IN_THE_LOOP) {
+      if (!edges.some(e => e.humanCheckpoint)) {
+        return { valid: false, message: "Human in the Loop workflow requires at least one human checkpoint to be defined on a connection." };
+      }
+    }
+
     return { valid: true, message: "" };
   }, [formData]);
 
@@ -167,27 +181,27 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
     const t = formData.nodes.find(n => n.id === targetId);
     if (!s || !t) return null;
     
-    // Exact Node Geometry
     const NODE_WIDTH = 256;
     const ANCHOR_Y_OFFSET = 110; 
 
     const isBackwards = t.position.x < s.position.x;
 
-    // Source Anchor (Right/Left Center Edge)
     const sx = isBackwards ? s.position.x : s.position.x + NODE_WIDTH;
     const sy = s.position.y + ANCHOR_Y_OFFSET;
 
-    // Target Anchor (Left/Right Center Edge)
     const tx = isBackwards ? t.position.x + NODE_WIDTH : t.position.x;
     const ty = t.position.y + ANCHOR_Y_OFFSET;
+    
+    const dx = tx - sx;
+    const controlDist = Math.max(Math.abs(dx) / 1.5, 120);
+    
+    const cp1x = isBackwards ? sx - controlDist : sx + controlDist;
+    const cp2x = isBackwards ? tx + controlDist : tx - controlDist;
+    
+    const midX = 0.125 * sx + 0.375 * cp1x + 0.375 * cp2x + 0.125 * tx;
+    const midY = 0.125 * sy + 0.375 * sy + 0.375 * ty + 0.125 * ty;
 
-    return {
-      sx,
-      sy,
-      tx,
-      ty,
-      isBackwards
-    };
+    return { sx, sy, tx, ty, cp1x, cp2x, midX, midY, isBackwards };
   };
 
   const filteredAgents = agents.filter(a => {
@@ -209,7 +223,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
             <h2 className="text-xl font-bold text-zinc-100">{formData.metadata.name || 'New Workflow'}</h2>
             <div className="flex items-center gap-2 text-xs text-zinc-500">
               <span className={`font-bold uppercase tracking-tighter ${validation.valid ? 'text-indigo-400' : 'text-amber-500'}`}>
-                {formData.metadata.type} {validation.valid ? '• VALID' : '• INVALID'}
+                {formData.metadata.type.replace(/_/g, ' ')} {validation.valid ? '• VALID' : '• INVALID'}
               </span>
               <span>•</span>
               <span>{formData.nodes.length} Agents</span>
@@ -285,6 +299,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
                       <option value={WorkflowType.CIRCULAR}>Circular</option>
                       <option value={WorkflowType.PARALLEL}>Parallel</option>
                       <option value={WorkflowType.NON_SEQUENTIAL}>Non-Sequential</option>
+                      <option value={WorkflowType.HUMAN_IN_THE_LOOP}>Human in the Loop</option>
                     </select>
                  </div>
                </div>
@@ -375,10 +390,7 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
         <div 
           ref={canvasRef}
           className="flex-1 bg-[radial-gradient(#18181b_1px,transparent_1px)] bg-[size:32px_32px] relative overflow-auto scrollbar-thin"
-          onDragOver={(e) => {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-          }}
+          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
           onDrop={(e) => {
             e.preventDefault();
             const agentId = e.dataTransfer.getData('agentId');
@@ -394,107 +406,56 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
           onMouseMove={(e) => {
             if (draggingNodeId && canvasRef.current) {
               const rect = canvasRef.current.getBoundingClientRect();
-              const scrollLeft = canvasRef.current.scrollLeft;
-              const scrollTop = canvasRef.current.scrollTop;
-              updateNodePosition(draggingNodeId, e.clientX - rect.left + scrollLeft - 128, e.clientY - rect.top + scrollTop - 60);
+              updateNodePosition(draggingNodeId, e.clientX - rect.left + canvasRef.current.scrollLeft - 128, e.clientY - rect.top + canvasRef.current.scrollTop - 60);
             }
           }}
           onMouseUp={() => setDraggingNodeId(null)}
         >
           <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ minWidth: '5000px', minHeight: '5000px' }}>
             <defs>
-              <marker id="arrowhead" markerWidth="14" markerHeight="10" refX="13" refY="5" orient="auto">
-                <path d="M0,0 L14,5 L0,10 Z" fill="#4f46e5" />
-              </marker>
+              <marker id="arrowhead" markerWidth="14" markerHeight="10" refX="13" refY="5" orient="auto"><path d="M0,0 L14,5 L0,10 Z" fill="#4f46e5" /></marker>
             </defs>
             {formData.edges.map(edge => {
               const data = getLineData(edge.source, edge.target);
               if (!data) return null;
-              
-              const dx = data.tx - data.sx;
-              const controlDist = Math.max(Math.abs(dx) / 1.5, 120); 
-              
-              const cp1x = data.isBackwards ? data.sx - controlDist : data.sx + controlDist;
-              const cp2x = data.isBackwards ? data.tx + controlDist : data.tx - controlDist;
-
-              return (
-                <path
-                  key={edge.id}
-                  d={`M ${data.sx} ${data.sy} C ${cp1x} ${data.sy}, ${cp2x} ${data.ty}, ${data.tx} ${data.ty}`}
-                  stroke="#4f46e5" strokeWidth="2.5" fill="none" markerEnd="url(#arrowhead)" 
-                  className="opacity-70 transition-all duration-300"
-                />
-              );
+              return (<path key={edge.id} d={`M ${data.sx} ${data.sy} C ${data.cp1x} ${data.sy}, ${data.cp2x} ${data.ty}, ${data.tx} ${data.ty}`} stroke="#4f46e5" strokeWidth="2.5" fill="none" markerEnd="url(#arrowhead)" className="opacity-70 transition-all duration-300" />);
             })}
           </svg>
+          
+          {/* Edge Interaction Layer */}
+          <div className="absolute inset-0 w-full h-full" style={{ minWidth: '5000px', minHeight: '5000px' }}>
+            {formData.metadata.type === WorkflowType.HUMAN_IN_THE_LOOP && formData.edges.map(edge => {
+              const data = getLineData(edge.source, edge.target);
+              if (!data) return null;
+              return (
+                <div key={`btn-${edge.id}`} style={{ position: 'absolute', left: data.midX, top: data.midY, transform: 'translate(-50%, -50%)' }}>
+                  <button onClick={() => toggleHumanCheckpoint(edge.id)} className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all duration-200 shadow-xl ${edge.humanCheckpoint ? 'bg-teal-500 border-teal-400 text-white' : 'bg-zinc-800 border-zinc-700 text-zinc-500 hover:bg-zinc-700'}`} title="Toggle Human Checkpoint"><UserCheck className="w-4 h-4" /></button>
+                </div>
+              );
+            })}
+          </div>
 
           {formData.nodes.map((node, idx) => {
             const agent = agents.find(a => a.id === node.agentId);
             const isConnStart = connStartNodeId === node.id;
             
             return (
-              <div 
-                key={node.id} 
-                className={`absolute w-64 bg-[#121214] border-2 rounded-xl shadow-2xl transition-all group ${
-                  isConnStart ? 'border-indigo-500 ring-4 ring-indigo-500/20 z-20' : 'border-zinc-800 hover:border-zinc-600 z-10'
-                }`}
-                style={{ left: node.position.x, top: node.position.y }}
-              >
-                {/* SEQUENCE INDICATOR BADGE */}
-                <div className="absolute -top-3 -left-3 w-7 h-7 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[11px] font-bold border-2 border-[#09090b] shadow-lg z-30">
-                  {idx + 1}
-                </div>
-
-                <div 
-                  className="p-4 cursor-move select-none"
-                  onMouseDown={(e) => {
-                    if ((e.target as HTMLElement).closest('button')) return;
-                    setDraggingNodeId(node.id);
-                  }}
-                >
+              <div key={node.id} className={`absolute w-64 bg-[#121214] border-2 rounded-xl shadow-2xl transition-all group ${isConnStart ? 'border-indigo-500 ring-4 ring-indigo-500/20 z-20' : 'border-zinc-800 hover:border-zinc-600 z-10'}`} style={{ left: node.position.x, top: node.position.y }}>
+                <div className="absolute -top-3 -left-3 w-7 h-7 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[11px] font-bold border-2 border-[#09090b] shadow-lg z-30">{idx + 1}</div>
+                <div className="p-4 cursor-move select-none" onMouseDown={(e) => { if (!(e.target as HTMLElement).closest('button')) setDraggingNodeId(node.id); }}>
                   <div className="flex justify-between items-start mb-3">
-                    <div className="w-8 h-8 bg-zinc-800 rounded flex items-center justify-center">
-                      <User className="w-4 h-4 text-indigo-400" />
-                    </div>
-                    <button onClick={() => removeNode(node.id)} className="p-1 text-zinc-600 hover:text-red-400 transition-colors">
-                      <X className="w-4 h-4" />
-                    </button>
+                    <div className="w-8 h-8 bg-zinc-800 rounded flex items-center justify-center"><User className="w-4 h-4 text-indigo-400" /></div>
+                    <div className="flex items-center gap-1"><button onClick={() => agent && onEditAgent(agent)} className="p-1 text-zinc-600 hover:text-indigo-400 transition-colors"><Edit2 className="w-4 h-4" /></button><button onClick={() => removeNode(node.id)} className="p-1 text-zinc-600 hover:text-red-400 transition-colors"><X className="w-4 h-4" /></button></div>
                   </div>
-                  
                   <h4 className="font-bold text-zinc-100 text-sm mb-1 truncate">{agent?.name}</h4>
                   <p className="text-[10px] text-zinc-500 line-clamp-2 mb-3 leading-relaxed">{agent?.description}</p>
-                  
-                  <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-zinc-900 border border-zinc-800 mb-4">
-                    <Cpu className="w-3 h-3 text-indigo-500" />
-                    <span className="text-[9px] font-medium text-zinc-400 truncate">{agent?.config.model}</span>
-                  </div>
-
+                  <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-zinc-900 border border-zinc-800 mb-4"><Cpu className="w-3 h-3 text-indigo-500" /><span className="text-[9px] font-medium text-zinc-400 truncate">{agent?.config.model}</span></div>
                   <div className="flex gap-2">
-                     <button 
-                       onClick={() => {
-                          if (connStartNodeId && connStartNodeId !== node.id) {
-                            tryConnect(connStartNodeId, node.id);
-                          } else {
-                            setConnStartNodeId(node.id);
-                          }
-                       }}
-                       className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all shadow-lg ${
-                         isConnStart ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                       }`}
-                     >
-                       {isConnStart ? 'Select Target' : 'Connect'}
-                       {!isConnStart && <ArrowRight className="w-3 h-3" />}
-                     </button>
-                     {isConnStart && (
-                       <button onClick={() => setConnStartNodeId(null)} className="px-3 py-2 bg-zinc-700 text-zinc-300 rounded-lg text-[10px] font-bold">CANCEL</button>
-                     )}
+                     <button onClick={() => { if (connStartNodeId && connStartNodeId !== node.id) tryConnect(connStartNodeId, node.id); else setConnStartNodeId(node.id); }} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all shadow-lg ${isConnStart ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}`}>{isConnStart ? 'Select Target' : 'Connect'}{!isConnStart && <ArrowRight className="w-3 h-3" />}</button>
+                     {isConnStart && (<button onClick={() => setConnStartNodeId(null)} className="px-3 py-2 bg-zinc-700 text-zinc-300 rounded-lg text-[10px] font-bold">CANCEL</button>)}
                   </div>
                 </div>
-
-                <div className="px-4 py-2 bg-zinc-900/50 border-t border-zinc-800 flex justify-between items-center text-[9px] text-zinc-600 font-bold uppercase">
-                   <span>In: {formData.edges.filter(e => e.target === node.id).length}</span>
-                   <span>Out: {formData.edges.filter(e => e.source === node.id).length}</span>
-                </div>
+                <div className="px-4 py-2 bg-zinc-900/50 border-t border-zinc-800 flex justify-between items-center text-[9px] text-zinc-600 font-bold uppercase"><span>In: {formData.edges.filter(e => e.target === node.id).length}</span><span>Out: {formData.edges.filter(e => e.source === node.id).length}</span></div>
               </div>
             );
           })}
@@ -502,35 +463,10 @@ export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({ workflow, agents
         {isResetConfirmVisible && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-[#0c0c0e] border border-zinc-800 p-8 rounded-3xl max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200">
-              <div className="flex items-center gap-4 text-amber-500 mb-6">
-                <div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/20">
-                  <AlertCircle className="w-6 h-6" />
-                </div>
-                <h3 className="text-lg font-bold text-zinc-100">Reset Graph?</h3>
-              </div>
-              <p className="text-sm text-zinc-400 leading-relaxed mb-8">
-                This will clear all agents and connections from the canvas. This action cannot be undone.
-              </p>
-              <div className="flex gap-3">
-                <button 
-                  onClick={() => setIsResetConfirmVisible(false)}
-                  className="flex-1 px-4 py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-xl font-bold text-xs transition-all border border-zinc-800"
-                >
-                  Cancel
-                </button>
-                <button 
-                  onClick={handleConfirmReset}
-                  className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold text-xs transition-all shadow-lg shadow-red-600/20"
-                >
-                  Confirm Reset
-                </button>
-              </div>
-              <button 
-                onClick={() => setIsResetConfirmVisible(false)}
-                className="absolute top-4 right-4 text-zinc-600 hover:text-zinc-300 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-4 text-amber-500 mb-6"><div className="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/20"><AlertCircle className="w-6 h-6" /></div><h3 className="text-lg font-bold text-zinc-100">Reset Graph?</h3></div>
+              <p className="text-sm text-zinc-400 leading-relaxed mb-8">This will clear all agents and connections from the canvas. This action cannot be undone.</p>
+              <div className="flex gap-3"><button onClick={() => setIsResetConfirmVisible(false)} className="flex-1 px-4 py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-xl font-bold text-xs transition-all border border-zinc-800">Cancel</button><button onClick={handleConfirmReset} className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold text-xs transition-all shadow-lg shadow-red-600/20">Confirm Reset</button></div>
+              <button onClick={() => setIsResetConfirmVisible(false)} className="absolute top-4 right-4 text-zinc-600 hover:text-zinc-300 transition-colors"><X className="w-5 h-5" /></button>
             </div>
           </div>
         )}

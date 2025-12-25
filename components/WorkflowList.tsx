@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Workflow, WorkflowType } from '../types';
-import { Plus, Edit2, Trash2, GitBranch, Layers, Clock, Activity } from 'lucide-react';
+import { Plus, Edit2, Trash2, GitBranch, Layers, Clock, Activity, UserCheck } from 'lucide-react';
 
 interface WorkflowListProps {
   workflows: Workflow[];
@@ -16,6 +16,7 @@ const TypeIcon: React.FC<{ type: WorkflowType }> = ({ type }) => {
     case WorkflowType.PARALLEL: return <Layers className="w-4 h-4 text-sky-400" />;
     case WorkflowType.CIRCULAR: return <Activity className="w-4 h-4 text-orange-400" />;
     case WorkflowType.NON_SEQUENTIAL: return <GitBranch className="w-4 h-4 text-purple-400" />;
+    case WorkflowType.HUMAN_IN_THE_LOOP: return <UserCheck className="w-4 h-4 text-teal-400" />;
     default: return null;
   }
 };
@@ -72,7 +73,7 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({ workflows, onEdit, o
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <TypeIcon type={workflow.metadata.type} />
-                  <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">{workflow.metadata.type.replace('_', ' ')}</span>
+                  <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">{workflow.metadata.type.replace(/_/g, ' ')}</span>
                 </div>
                 <span className="text-xs text-zinc-500">{workflow.nodes.length} Agents</span>
               </div>

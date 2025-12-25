@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import Markdown from 'markdown-to-jsx';
 import { Agent, Tool } from '../types';
 import { geminiService } from '../services/gemini';
-import { ArrowLeft, Play, Download, Loader2, AlertCircle, Cpu, FileText } from 'lucide-react';
+import { ArrowLeft, Play, Download, Loader2, AlertCircle, Cpu, FileText, Upload, X } from 'lucide-react';
 
 interface AgentTestViewProps {
   agent: Agent;
@@ -11,10 +11,33 @@ interface AgentTestViewProps {
 }
 
 export const AgentTestView: React.FC<AgentTestViewProps> = ({ agent, onBack }) => {
-  const [inputs, setInputs] = useState<Record<string, string>>({});
+  const [inputs, setInputs] = useState<Record<string, string | File[]>>({});
   const [output, setOutput] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
+
+  const readFileAsText = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsText(file);
+    });
+  };
+  
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, parameter: string) => {
+    if (e.target.files) {
+      setInputs(prev => ({...prev, [parameter]: Array.from(e.target.files!)}));
+    }
+  };
+
+  const handleRemoveFile = (parameter: string, fileIndex: number) => {
+    setInputs(prev => {
+      const currentFiles = prev[parameter] as File[];
+      const newFiles = currentFiles.filter((_, i) => i !== fileIndex);
+      return {...prev, [parameter]: newFiles.length > 0 ? newFiles : ''};
+    });
+  };
 
   const handleRunTest = async () => {
     setIsLoading(true);
@@ -25,15 +48,25 @@ export const AgentTestView: React.FC<AgentTestViewProps> = ({ agent, onBack }) =
       let taskWithInputs = agent.taskDescription;
       let paramContext = "";
       
-      agent.inputs.forEach(input => {
-        const val = inputs[input.parameter] || "";
-        const placeholder = `{${input.parameter}}`;
-        if (taskWithInputs.includes(placeholder)) {
-          taskWithInputs = taskWithInputs.split(placeholder).join(val);
-        } else {
-          paramContext += `\n- ${input.parameter}: ${val}`;
+      for (const inputDef of agent.inputs) {
+        const key = inputDef.parameter;
+        const value = inputs[key];
+        let processedValue = '';
+        
+        if (Array.isArray(value) && value.length > 0) {
+          const contents = await Promise.all(value.map(readFileAsText));
+          processedValue = contents.join('\n\n--- (File Content Break) ---\n\n');
+        } else if (typeof value === 'string') {
+          processedValue = value;
         }
-      });
+
+        const placeholder = `{${key}}`;
+        if (taskWithInputs.includes(placeholder)) {
+          taskWithInputs = taskWithInputs.split(placeholder).join(processedValue);
+        } else {
+          paramContext += `\n- ${key}: ${processedValue}`;
+        }
+      }
 
       const finalInput = `CONTEXT_CHAIN: This is a standalone test run.\n\nPARAM_BLOCK:${paramContext || ' None'}\n\nASSIGNED_TASK: ${taskWithInputs}`;
 
@@ -89,15 +122,35 @@ export const AgentTestView: React.FC<AgentTestViewProps> = ({ agent, onBack }) =
           <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Input Parameters</h3>
           {agent.inputs.length > 0 ? (
             agent.inputs.map(input => (
-              <div key={input.parameter} className="space-y-2">
-                <label className="text-sm font-medium text-indigo-400 font-mono">{input.parameter}</label>
-                <p className="text-xs text-zinc-500">{input.description}</p>
-                <textarea
-                  value={inputs[input.parameter] || ''}
-                  onChange={(e) => setInputs(prev => ({...prev, [input.parameter]: e.target.value}))}
-                  rows={4}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-sm mono focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-y"
-                />
+              <div key={input.parameter} className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium text-indigo-400 font-mono">{input.parameter}</label>
+                  <p className="text-xs text-zinc-500">{input.description}</p>
+                </div>
+
+                {Array.isArray(inputs[input.parameter]) && (inputs[input.parameter] as File[]).length > 0 ? (
+                  <div className="space-y-2">
+                    {(inputs[input.parameter] as File[]).map((file, index) => (
+                      <div key={index} className="flex items-center justify-between bg-zinc-900/50 border border-zinc-800 rounded-lg p-2 text-xs">
+                        <span className="truncate text-zinc-300">{file.name}</span>
+                        <button onClick={() => handleRemoveFile(input.parameter, index)} className="p-1 text-zinc-500 hover:text-red-400"><X className="w-3 h-3"/></button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <textarea
+                    value={typeof inputs[input.parameter] === 'string' ? (inputs[input.parameter] as string) : ''}
+                    onChange={(e) => setInputs(prev => ({...prev, [input.parameter]: e.target.value}))}
+                    rows={4}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-sm mono focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-y"
+                  />
+                )}
+                 <div>
+                  <label htmlFor={`file-upload-${input.parameter}`} className="cursor-pointer flex items-center justify-center gap-2 w-full p-2 bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700/80 rounded-lg text-xs font-bold text-zinc-400 transition-colors">
+                    <Upload className="w-3.5 h-3.5" /> Attach Files
+                  </label>
+                  <input id={`file-upload-${input.parameter}`} type="file" multiple className="hidden" onChange={(e) => handleFileChange(e, input.parameter)} />
+                </div>
               </div>
             ))
           ) : (

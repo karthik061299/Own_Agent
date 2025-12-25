@@ -32,6 +32,7 @@ const App: React.FC = () => {
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [deletionTarget, setDeletionTarget] = useState<{ type: 'agent' | 'workflow' | 'tool', id: string, name: string } | null>(null);
+  const [navigationSource, setNavigationSource] = useState<{ view: AppView, data: any } | null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -64,6 +65,7 @@ const App: React.FC = () => {
     setEditingTool(null);
     setTestingAgent(null);
     setComparingAgent(null);
+    setNavigationSource(null);
     setActiveView(view);
   };
 
@@ -71,7 +73,14 @@ const App: React.FC = () => {
     try {
       await dbService.saveAgent(agent);
       await reloadAllData();
-      navigateTo('agentList');
+      if (navigationSource?.view === 'workflowEditor') {
+        const updatedWorkflow = await dbService.getWorkflows().then(ws => ws.find(w => w.metadata.id === navigationSource.data.metadata.id));
+        setEditingWorkflow(updatedWorkflow || navigationSource.data);
+        setActiveView('workflowEditor');
+        setNavigationSource(null);
+      } else {
+        navigateTo('agentList');
+      }
     } catch (e: any) {
       console.error("Failed to save agent to database:", e);
       alert(`Failed to save agent to database: ${e.message || 'Unknown error'}`);
@@ -116,6 +125,12 @@ const App: React.FC = () => {
   };
 
   const handleEditAgent = (agent: Agent) => {
+    setEditingAgent(agent);
+    setActiveView('agentEditor');
+  };
+  
+  const handleEditAgentFromWorkflow = (agent: Agent, workflow: Workflow) => {
+    setNavigationSource({ view: 'workflowEditor', data: workflow });
     setEditingAgent(agent);
     setActiveView('agentEditor');
   };
@@ -197,12 +212,22 @@ const App: React.FC = () => {
     }
   };
 
+  const handleCancelEdit = () => {
+    if (navigationSource?.view === 'workflowEditor') {
+      setEditingWorkflow(navigationSource.data);
+      setActiveView('workflowEditor');
+      setNavigationSource(null);
+    } else {
+      navigateTo('agentList');
+    }
+  };
+
   const renderActiveView = () => {
     switch (activeView) {
       case 'agentList':
         return <AgentList agents={agents} tools={tools} onEdit={handleEditAgent} onDelete={handleDeleteAgent} onCreate={handleCreateAgent} />;
       case 'agentEditor':
-        return editingAgent && <AgentEditor agent={editingAgent} tools={tools} onSave={handleSaveAgent} onTest={handleTestAgent} onCancel={() => navigateTo('agentList')} onSaveAndCompare={handleSaveAndCompare} />;
+        return editingAgent && <AgentEditor agent={editingAgent} tools={tools} onSave={handleSaveAgent} onTest={handleTestAgent} onCancel={handleCancelEdit} onSaveAndCompare={handleSaveAndCompare} />;
       case 'agentTester':
         return testingAgent && <AgentTestView agent={testingAgent} onBack={() => { setTestingAgent(null); setActiveView('agentEditor'); setEditingAgent(testingAgent); }} />;
       case 'agentComparer':
@@ -210,7 +235,7 @@ const App: React.FC = () => {
       case 'workflowList':
         return <WorkflowList workflows={workflows} onEdit={(w) => { setEditingWorkflow(w); setActiveView('workflowEditor'); }} onDelete={handleDeleteWorkflow} onCreate={() => { setEditingWorkflow({ metadata: { id: crypto.randomUUID(), name: '', description: '', type: 'SEQUENTIAL' as any, useManager: false, managerModel: 'gemini-3-pro-preview', managerTemperature: 0.7, managerTopP: 0.9 }, nodes: [], edges: [] }); setActiveView('workflowEditor'); }} />;
       case 'workflowEditor':
-        return editingWorkflow && <WorkflowEditor workflow={editingWorkflow} agents={agents} onSave={handleSaveWorkflow} onCancel={() => navigateTo('workflowList')} />;
+        return editingWorkflow && <WorkflowEditor workflow={editingWorkflow} agents={agents} onSave={handleSaveWorkflow} onCancel={() => navigateTo('workflowList')} onEditAgent={(agent) => handleEditAgentFromWorkflow(agent, editingWorkflow)} />;
       case 'toolList':
         return <ToolsList tools={tools} onEdit={(t) => { setEditingTool(t); setActiveView('toolEditor'); }} onDelete={handleDeleteTool} onCreate={() => { setEditingTool({ id: crypto.randomUUID(), name: '', description: '', className: '', language: 'javascript', parameters: { type: 'OBJECT', properties: {}, required: [] }, code: `async (args) => {\n  // Implementation here\n  return 'Success';\n}` }); setActiveView('toolEditor'); }} />;
       case 'toolEditor':
